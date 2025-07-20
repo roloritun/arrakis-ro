@@ -173,7 +173,7 @@ ___
 
 ![Arrakis GUI](docs/images/arrakis-gui.png)
 
-- Every sandbox comes with a VNC server running at boot. It also comes with Chrome pre-installed.
+- Every sandbox comes with a VNC server running at boot. It also comes with Chromium pre-installed.
 
 - Arrakis also handles port forwarding to expose the VNC server via a port on the dev server running `arrakis-restserver`.
 
@@ -215,7 +215,7 @@ ___
 
 - **Chrome DevTools Protocol (CDP)**: For browser automation and testing, you can connect to the CDP endpoint.
   ```bash
-  # The CDP service allows programmatic control of Chrome/Chromium browsers
+  # The CDP service allows programmatic control of Chromium browsers
   curl http://<dev-server-ip>:3002/json/version
   ```
 
@@ -225,7 +225,7 @@ ___
   open http://<dev-server-ip>:3001
   ```
 
-- **Chrome DevTools Protocol (CDP)**: For browser automation, each sandbox runs Chrome with CDP enabled.
+- **Chrome DevTools Protocol (CDP)**: For browser automation, each sandbox runs Chromium with CDP enabled.
   ```bash
   # Connect to CDP endpoint using port 3002 (mapped to guest port 9222)
   curl http://<dev-server-ip>:3002/json/version

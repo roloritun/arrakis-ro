@@ -123,12 +123,9 @@ RUN ln -s /usr/lib/systemd/system/${CDPSERVER_BIN}.service /etc/systemd/system/m
 RUN ln -s /dev/null /etc/systemd/network/99-default.link
 ##############
 
-# Install Chrome.
-RUN wget -O /tmp/google-chrome-stable_current_amd64.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    # Any failure here will be fixed by the `install -f` command below.
-    dpkg -i /tmp/google-chrome-stable_current_amd64.deb || true && \
-    apt-get update && apt-get install -f -y && \
-    rm -rf /tmp/google-chrome-stable_current_amd64.deb && \
+# Install Chromium from Ubuntu repositories
+RUN apt-get update && \
+    apt-get install -y chromium-browser && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and npm from Ubuntu repositories

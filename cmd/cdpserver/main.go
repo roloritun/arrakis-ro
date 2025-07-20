@@ -36,7 +36,7 @@ func (s *cdpServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 // CDP endpoints proxy
 func (s *cdpServer) versionHandler(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
-		"Browser":              "Chrome/120.0.0.0",
+		"Browser":              "Chromium/120.0.0.0",
 		"Protocol-Version":     "1.3",
 		"User-Agent":           "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
 		"V8-Version":           "12.0.267.17",
@@ -65,10 +65,10 @@ func (s *cdpServer) listHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Start Chrome in headless mode with CDP enabled
+// Start Chromium in headless mode with CDP enabled
 func (s *cdpServer) startChromeHeadless() error {
 	cmd := exec.Command(
-		"google-chrome",
+		"chromium-browser",
 		"--headless",
 		"--no-sandbox",
 		"--disable-gpu",
@@ -80,7 +80,7 @@ func (s *cdpServer) startChromeHeadless() error {
 		"--disable-images",
 	)
 
-	log.Info("Starting Chrome in headless mode for CDP")
+	log.Info("Starting Chromium in headless mode for CDP")
 	return cmd.Start()
 }
 
@@ -125,13 +125,13 @@ func main() {
 	// Create CDP server
 	s := &cdpServer{port: cdpConfig.Port}
 
-	// Start Chrome in headless mode
+	// Start Chromium in headless mode
 	err = s.startChromeHeadless()
 	if err != nil {
-		log.Fatalf("Failed to start Chrome: %v", err)
+		log.Fatalf("Failed to start Chromium: %v", err)
 	}
 
-	// Give Chrome time to start
+	// Give Chromium time to start
 	time.Sleep(2 * time.Second)
 
 	r := mux.NewRouter()
