@@ -7,6 +7,21 @@ Requires=arrakis-vncserver.service
 Type=simple
 User=elara
 WorkingDirectory=/opt/novnc
+ExecStart=/opt/novnc/utils/novnc_proxy --vnc localhost:5901 --listen 6080
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.targetn=NoVNC Server for Arrakis
+After=arrakis-vncserver.service
+Requires=arrakis-vncserver.service
+
+[Service]
+Type=simple
+User=elara
+WorkingDirectory=/opt/novnc
 ExecStart=/opt/novnc/utils/novnc_proxy --listen 6080 --vnc localhost:5901
 Restart=on-failure
 RestartSec=5

@@ -131,14 +131,15 @@ RUN wget -O /tmp/google-chrome-stable_current_amd64.deb https://dl.google.com/li
     rm -rf /tmp/google-chrome-stable_current_amd64.deb && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js and npm
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o nodesource_setup.sh && \
-    sudo -E bash nodesource_setup.sh && \
-    sudo apt-get install -y nodejs && \
-    rm -f nodesource_setup.sh && \
+# Install Node.js and npm from Ubuntu repositories
+RUN apt-get update && \
+    apt-get install -y nodejs npm && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install noVNC
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
     ln -s /opt/novnc/vnc.html /opt/novnc/index.html && \
-    chmod +x /opt/novnc/utils/novnc_proxy
+    chmod +x /opt/novnc/utils/novnc_proxy && \
+    # Create a simple wrapper script for noVNC
+    echo '#!/bin/bash\ncd /opt/novnc && ./utils/novnc_proxy --vnc localhost:5901 --listen 6080' > /usr/local/bin/novnc && \
+    chmod +x /usr/local/bin/novnc

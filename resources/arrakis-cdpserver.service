@@ -6,7 +6,7 @@ After=arrakis-guestinit.service
 Type=simple
 User=elara
 WorkingDirectory=/home/elara
-ExecStart=/usr/bin/google-chrome --headless --no-sandbox --disable-gpu --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --disable-extensions --disable-plugins --disable-images --disable-javascript --virtual-time-budget=1000
+ExecStart=/usr/bin/google-chrome --headless --no-sandbox --disable-gpu --remote-debugging-address=0.0.0.0 --remote-debugging-port=9222 --disable-extensions --disable-dev-shm-usage
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
