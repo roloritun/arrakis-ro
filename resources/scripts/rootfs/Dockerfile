@@ -106,6 +106,18 @@ RUN chmod +x /usr/local/bin/${VSOCKSERVER_BIN}
 COPY ${RESOURCES_DIR}/${VSOCKSERVER_BIN}.service /usr/lib/systemd/system/${VSOCKSERVER_BIN}.service
 RUN ln -s /usr/lib/systemd/system/${VSOCKSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${VSOCKSERVER_BIN}.service
 
+ARG NOVNCSERVER_BIN=arrakis-novncserver
+COPY ${OUT_DIR}/${NOVNCSERVER_BIN} /usr/local/bin/${NOVNCSERVER_BIN}
+RUN chmod +x /usr/local/bin/${NOVNCSERVER_BIN}
+COPY ${RESOURCES_DIR}/${NOVNCSERVER_BIN}.service /usr/lib/systemd/system/${NOVNCSERVER_BIN}.service
+RUN ln -s /usr/lib/systemd/system/${NOVNCSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${NOVNCSERVER_BIN}.service
+
+ARG CDPSERVER_BIN=arrakis-cdpserver
+COPY ${OUT_DIR}/${CDPSERVER_BIN} /usr/local/bin/${CDPSERVER_BIN}
+RUN chmod +x /usr/local/bin/${CDPSERVER_BIN}
+COPY ${RESOURCES_DIR}/${CDPSERVER_BIN}.service /usr/lib/systemd/system/${CDPSERVER_BIN}.service
+RUN ln -s /usr/lib/systemd/system/${CDPSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${CDPSERVER_BIN}.service
+
 # Prevent the renaming service that will change "eth0" to "ens*". If not done our init service
 # inside the guest has race conditions while configuring the network.
 RUN ln -s /dev/null /etc/systemd/network/99-default.link
@@ -125,3 +137,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x -o nodesource_setup.sh && \
     sudo apt-get install -y nodejs && \
     rm -f nodesource_setup.sh && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install noVNC
+RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
+    ln -s /opt/novnc/vnc.html /opt/novnc/index.html && \
+    chmod +x /opt/novnc/utils/novnc_proxy

@@ -9,17 +9,19 @@ GUESTINIT_BIN := ${OUT_DIR}/arrakis-guestinit
 ROOTFSMAKER_BIN := ${OUT_DIR}/arrakis-rootfsmaker
 CMDSERVER_BIN := ${OUT_DIR}/arrakis-cmdserver
 CMDCLIENT_BIN := ${OUT_DIR}/arrakis-cmdclient
+NOVNCSERVER_BIN := ${OUT_DIR}/arrakis-novncserver
+CDPSERVER_BIN := ${OUT_DIR}/arrakis-cdpserver
 GUESTROOTFS_BIN := ${OUT_DIR}/arrakis-guestrootfs-ext4.img
 VSOCKSERVER_BIN := ${OUT_DIR}/arrakis-vsockserver
 VSOCKCLIENT_BIN := ${OUT_DIR}/arrakis-vsockclient
 INITRAMFS_SRC_DIR := initramfs
 
-.PHONY: all clean serverapi chvapi initramfs restserver client guestinit rootfsmaker cmdserver guestrootfs guest vsockclient vsockserver
+.PHONY: all clean serverapi chvapi initramfs restserver client guestinit rootfsmaker cmdserver novncserver cdpserver guestrootfs guest vsockclient vsockserver
 
 clean:
 	rm -rf ${OUT_DIR}
 
-all: serverapi chvapi restserver client guestinit rootfsmaker cmdserver guestrootfs guest vsockclient vsockserver
+all: serverapi chvapi restserver client guestinit rootfsmaker cmdserver novncserver cdpserver guestrootfs guest vsockclient vsockserver
 
 serverapi: ${OUT_DIR}/arrakis-serverapi.stamp
 ${OUT_DIR}/arrakis-serverapi.stamp: ./api/server-api.yaml
@@ -63,11 +65,19 @@ cmdserver:
 	mkdir -p ${OUT_DIR}
 	CGO_ENABLED=0 go build -o ${CMDSERVER_BIN} ./cmd/cmdserver
 
-guestrootfs: rootfsmaker initramfs cmdserver vsockserver guestinit
+novncserver:
+	mkdir -p ${OUT_DIR}
+	CGO_ENABLED=0 go build -o ${NOVNCSERVER_BIN} ./cmd/novncserver
+
+cdpserver:
+	mkdir -p ${OUT_DIR}
+	CGO_ENABLED=0 go build -o ${CDPSERVER_BIN} ./cmd/cdpserver
+
+guestrootfs: rootfsmaker initramfs cmdserver novncserver cdpserver vsockserver guestinit
 	mkdir -p ${OUT_DIR}
 	sudo ${OUT_DIR}/arrakis-rootfsmaker create -o ${GUESTROOTFS_BIN} -d ./resources/scripts/rootfs/Dockerfile
 
-guest: guestinit rootfsmaker cmdserver guestrootfs
+guest: guestinit rootfsmaker cmdserver novncserver cdpserver guestrootfs
 
 vsockclient:
 	mkdir -p ${OUT_DIR}

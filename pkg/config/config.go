@@ -7,9 +7,11 @@ import (
 )
 
 const (
-	serverConfigKey     = "hostservices.restserver"
-	clientConfigKey     = "hostservices.client"
-	codeServerConfigKey = "guestservices.codeserver"
+	serverConfigKey      = "hostservices.restserver"
+	clientConfigKey      = "hostservices.client"
+	codeServerConfigKey  = "guestservices.codeserver"
+	novncServerConfigKey = "guestservices.novncserver"
+	cdpServerConfigKey   = "guestservices.cdpserver"
 )
 
 type PortForwardConfig struct {
@@ -85,6 +87,26 @@ Port: %s
 }`, c.Port)
 }
 
+type NoVNCServerConfig struct {
+	Port string `mapstructure:"port"`
+}
+
+func (c NoVNCServerConfig) String() string {
+	return fmt.Sprintf(`{
+Port: %s
+}`, c.Port)
+}
+
+type CDPServerConfig struct {
+	Port string `mapstructure:"port"`
+}
+
+func (c CDPServerConfig) String() string {
+	return fmt.Sprintf(`{
+Port: %s
+}`, c.Port)
+}
+
 func GetServerConfig(configFile string) (*ServerConfig, error) {
 	viper.SetConfigFile(configFile)
 	err := viper.ReadInConfig()
@@ -138,6 +160,44 @@ func GetCodeServerConfig(configFile string) (*CodeServerConfig, error) {
 
 	var result CodeServerConfig
 	if err := clientConfig.Unmarshal(&result); err != nil {
+		return nil, fmt.Errorf("error unmarshalling config: %v", err)
+	}
+	return &result, nil
+}
+
+func GetNoVNCServerConfig(configFile string) (*NoVNCServerConfig, error) {
+	viper.SetConfigFile(configFile)
+	err := viper.ReadInConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %v", err)
+	}
+
+	novncConfig := viper.Sub(novncServerConfigKey)
+	if novncConfig == nil {
+		return nil, fmt.Errorf("novnc server configuration not found")
+	}
+
+	var result NoVNCServerConfig
+	if err := novncConfig.Unmarshal(&result); err != nil {
+		return nil, fmt.Errorf("error unmarshalling config: %v", err)
+	}
+	return &result, nil
+}
+
+func GetCDPServerConfig(configFile string) (*CDPServerConfig, error) {
+	viper.SetConfigFile(configFile)
+	err := viper.ReadInConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config: %v", err)
+	}
+
+	cdpConfig := viper.Sub(cdpServerConfigKey)
+	if cdpConfig == nil {
+		return nil, fmt.Errorf("cdp server configuration not found")
+	}
+
+	var result CDPServerConfig
+	if err := cdpConfig.Unmarshal(&result); err != nil {
 		return nil, fmt.Errorf("error unmarshalling config: %v", err)
 	}
 	return &result, nil

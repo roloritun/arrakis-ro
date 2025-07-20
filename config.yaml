@@ -15,6 +15,10 @@ hostservices:
         description: "gui"
       - port: "5736-5740"
         description: "code"
+      - port: "6080"
+        description: "novnc"
+      - port: "9222"
+        description: "cdp"
     stateful_size_in_mb: "2048"
     guest_mem_percentage: "30"
   client:
@@ -25,3 +29,7 @@ guestservices:
     port: "4030"
   cmdserver:
     port: "4031"
+  novncserver:
+    port: "6080"
+  cdpserver:
+    port: "9222"

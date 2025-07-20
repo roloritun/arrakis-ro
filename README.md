@@ -193,7 +193,11 @@ ___
     'status': 'RUNNING',
     'ip': '10.20.1.2/24',
     'tap_device_name': 'tap0',
-    'port_forwards': [{'host_port': '3000', 'guest_port': '5901', 'description': 'gui'}]
+    'port_forwards': [
+      {'host_port': '3000', 'guest_port': '5901', 'description': 'gui'},
+      {'host_port': '3001', 'guest_port': '6080', 'description': 'novnc'},
+      {'host_port': '3002', 'guest_port': '9222', 'description': 'cdp'}
+    ]
   }
   ```
 
@@ -201,6 +205,30 @@ ___
   ```bash
   # We see port 3000 is the host port forwarded to the VNC server running inside the sandbox.
   ./utils/novnc_proxy --vnc <dev-server-ip>:3000
+  ```
+
+- **NoVNC Access**: You can also access the GUI directly through a web browser using the noVNC service.
+  ```bash
+  # Access the sandbox GUI through your web browser using the novnc port
+  open http://<dev-server-ip>:3001
+  ```
+
+- **Chrome DevTools Protocol (CDP)**: For browser automation and testing, you can connect to the CDP endpoint.
+  ```bash
+  # The CDP service allows programmatic control of Chrome/Chromium browsers
+  curl http://<dev-server-ip>:3002/json/version
+  ```
+
+- **NoVNC Access**: Every sandbox also includes a noVNC web interface for browser-based VNC access.
+  ```bash
+  # Access noVNC in browser using port 3001 (mapped to guest port 6080)
+  open http://<dev-server-ip>:3001
+  ```
+
+- **Chrome DevTools Protocol (CDP)**: For browser automation, each sandbox runs Chrome with CDP enabled.
+  ```bash
+  # Connect to CDP endpoint using port 3002 (mapped to guest port 9222)
+  curl http://<dev-server-ip>:3002/json/version
   ```
 ___
 
