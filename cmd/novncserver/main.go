@@ -96,7 +96,7 @@ func main() {
 	// Register routes
 	r.HandleFunc("/health", s.healthCheck).Methods("GET")
 	r.HandleFunc("/", s.proxyHandler).Methods("GET")
-	r.PathPrefix("/").Handler(s.proxyHandler)
+	r.PathPrefix("/").HandlerFunc(s.proxyHandler)
 
 	// Start HTTP server
 	srv := &http.Server{
