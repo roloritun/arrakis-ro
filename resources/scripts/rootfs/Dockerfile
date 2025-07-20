@@ -124,8 +124,8 @@ RUN ln -s /dev/null /etc/systemd/network/99-default.link
 ##############
 
 # Install Chromium from Ubuntu repositories
-RUN apt-get update --fix-missing || (sleep 10 && apt-get update) && \
-    apt-get install -y chromium-browser && \
+RUN apt-get update && \
+    apt-get install -y chromium && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js and npm from Ubuntu repositories
