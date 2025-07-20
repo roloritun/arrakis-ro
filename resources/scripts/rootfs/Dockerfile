@@ -123,15 +123,18 @@ RUN ln -s /usr/lib/systemd/system/${CDPSERVER_BIN}.service /etc/systemd/system/m
 RUN ln -s /dev/null /etc/systemd/network/99-default.link
 ##############
 
-# Install Chromium from Ubuntu repositories
-RUN apt-get update && \
-    apt-get install -y chromium && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # Install Node.js and npm from Ubuntu repositories
-RUN apt-get update --fix-missing || (sleep 10 && apt-get update) && \
+RUN apt-get update && \
     apt-get install -y nodejs npm && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Patchright (better than Playwright for AI automation) and Chromium
+RUN npm install -g patchright && \
+    patchright install chromium && \
+    patchright install-deps chromium && \
+    # Create a wrapper script to find and run Patchright Chromium
+    echo '#!/bin/bash\nCHROME_PATH=$(find $(npm root -g)/patchright/lib/server -name "chrome" -type f | head -1)\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
+    chmod +x /usr/local/bin/patchright-chrome
 
 # Install noVNC
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
