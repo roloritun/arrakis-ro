@@ -123,10 +123,12 @@ RUN ln -s /usr/lib/systemd/system/${CDPSERVER_BIN}.service /etc/systemd/system/m
 RUN ln -s /dev/null /etc/systemd/network/99-default.link
 ##############
 
-# Install Node.js and npm from Ubuntu repositories
-RUN apt-get update && \
-    apt-get install -y nodejs npm && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Install Node.js using snap (more reliable on GCP)
+RUN apt-get update && apt-get install -y snapd && \
+    systemctl enable snapd && \
+    snap install node --classic && \
+    ln -s /snap/bin/node /usr/local/bin/node && \
+    ln -s /snap/bin/npm /usr/local/bin/npm
 
 # Install Patchright (better than Playwright for AI automation) and Chromium
 RUN npm install -g patchright && \
