@@ -138,7 +138,9 @@ RUN pip3 install patchright && \
     patchright install-deps chromium && \
     # Create a wrapper script to find and run Patchright Chromium
     echo '#!/bin/bash\nCHROME_PATH=$(find ~/.cache/patchright -name "chrome" -type f | head -1)\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
-    chmod +x /usr/local/bin/patchright-chrome
+    chmod +x /usr/local/bin/patchright-chrome && \
+    # Create symlink for CDP server compatibility
+    ln -sf /usr/local/bin/patchright-chrome /usr/local/bin/chromium-browser
 
 # Install noVNC
 RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
