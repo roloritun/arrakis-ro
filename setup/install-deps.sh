@@ -5,6 +5,23 @@ set -euo pipefail
 echo "Updating apt package list..."
 sudo apt update
 
+# Install Git (needed for NoVNC installation)
+echo "Installing Git..."
+sudo apt install -y git
+
+# Install NoVNC for web-based VNC access
+echo "Installing NoVNC..."
+sudo mkdir -p /opt
+cd /opt
+if [ ! -d "/opt/novnc" ]; then
+  sudo git clone https://github.com/novnc/noVNC.git novnc
+  cd novnc
+  sudo ln -sf vnc.html index.html
+  echo "NoVNC installed successfully at /opt/novnc"
+else
+  echo "NoVNC already installed at /opt/novnc"
+fi
+
 # Install make
 echo "Installing make..."
 sudo apt install -y make
