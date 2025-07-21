@@ -130,11 +130,11 @@ RUN curl -fsSL https://nodejs.org/dist/v18.20.4/node-v18.20.4-linux-x64.tar.xz |
     ln -s /opt/node-v18.20.4-linux-x64/bin/npx /usr/local/bin/npx
 
 # Install Patchright (better than Playwright for AI automation) and Chromium
-RUN npm install -g patchright && \
+RUN pip3 install patchright && \
     patchright install chromium && \
     patchright install-deps chromium && \
     # Create a wrapper script to find and run Patchright Chromium
-    echo '#!/bin/bash\nCHROME_PATH=$(find $(npm root -g)/patchright/lib/server -name "chrome" -type f | head -1)\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
+    echo '#!/bin/bash\nCHROME_PATH=$(find ~/.cache/patchright -name "chrome" -type f | head -1)\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
     chmod +x /usr/local/bin/patchright-chrome
 
 # Install noVNC
