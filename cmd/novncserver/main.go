@@ -250,16 +250,23 @@ func main() {
 	r.HandleFunc("/", s.proxyHandler).Methods("GET")
 	r.PathPrefix("/").HandlerFunc(s.proxyHandler)
 
-	// Start HTTP server
+	// Start HTTP/HTTPS server
 	srv := &http.Server{
 		Addr:    ":" + novncConfig.Port,
 		Handler: r,
 	}
 
 	go func() {
-		log.Printf("NoVNC server listening on port: %s", novncConfig.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start novnc server: %v", err)
+		if novncConfig.TLS.Enabled {
+			log.Printf("NoVNC HTTPS server listening on port: %s", novncConfig.Port)
+			if err := srv.ListenAndServeTLS(novncConfig.TLS.CertFile, novncConfig.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to start novnc HTTPS server: %v", err)
+			}
+		} else {
+			log.Printf("NoVNC HTTP server listening on port: %s", novncConfig.Port)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to start novnc HTTP server: %v", err)
+			}
 		}
 	}()
 

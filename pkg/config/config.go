@@ -19,9 +19,16 @@ type PortForwardConfig struct {
 	Description string `mapstructure:"description"`
 }
 
+type TLSConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	CertFile string `mapstructure:"cert_file"`
+	KeyFile  string `mapstructure:"key_file"`
+}
+
 type ServerConfig struct {
 	Host               string              `mapstructure:"host"`
 	Port               string              `mapstructure:"port"`
+	TLS                TLSConfig           `mapstructure:"tls"`
 	StateDir           string              `mapstructure:"state_dir"`
 	BridgeName         string              `mapstructure:"bridge_name"`
 	BridgeIP           string              `mapstructure:"bridge_ip"`
@@ -66,8 +73,9 @@ GuestMemPercentage: %d
 }
 
 type ClientConfig struct {
-	ServerHost string `mapstructure:"server_host"`
-	ServerPort string `mapstructure:"server_port"`
+	ServerHost string    `mapstructure:"server_host"`
+	ServerPort string    `mapstructure:"server_port"`
+	TLS        TLSConfig `mapstructure:"tls"`
 }
 
 func (c ClientConfig) String() string {
@@ -88,7 +96,8 @@ Port: %s
 }
 
 type NoVNCServerConfig struct {
-	Port string `mapstructure:"port"`
+	Port string    `mapstructure:"port"`
+	TLS  TLSConfig `mapstructure:"tls"`
 }
 
 func (c NoVNCServerConfig) String() string {
@@ -98,7 +107,8 @@ Port: %s
 }
 
 type CDPServerConfig struct {
-	Port string `mapstructure:"port"`
+	Port string    `mapstructure:"port"`
+	TLS  TLSConfig `mapstructure:"tls"`
 }
 
 func (c CDPServerConfig) String() string {

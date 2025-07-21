@@ -153,16 +153,23 @@ func main() {
 	r.HandleFunc("/json", s.listHandler).Methods("GET")
 	r.HandleFunc("/json/list", s.listHandler).Methods("GET")
 
-	// Start HTTP server
+	// Start HTTP/HTTPS server
 	srv := &http.Server{
 		Addr:    ":" + cdpConfig.Port,
 		Handler: r,
 	}
 
 	go func() {
-		log.Printf("CDP server listening on port: %s", cdpConfig.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start cdp server: %v", err)
+		if cdpConfig.TLS.Enabled {
+			log.Printf("CDP HTTPS server listening on port: %s", cdpConfig.Port)
+			if err := srv.ListenAndServeTLS(cdpConfig.TLS.CertFile, cdpConfig.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to start cdp HTTPS server: %v", err)
+			}
+		} else {
+			log.Printf("CDP HTTP server listening on port: %s", cdpConfig.Port)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to start cdp HTTP server: %v", err)
+			}
 		}
 	}()
 

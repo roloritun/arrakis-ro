@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -143,14 +146,19 @@ func listAllVMs() error {
 	return nil
 }
 
-func createApiClient(serverAddr string) (*serverapi.APIClient, error) {
+func createApiClient(serverAddr string, clientConfig *config.ClientConfig) (*serverapi.APIClient, error) {
 	host, port, err := net.SplitHostPort(serverAddr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse server address: %v", err)
 	}
 
+	scheme := "http"
+	if clientConfig.TLS.Enabled {
+		scheme = "https"
+	}
+
 	serverConfiguration := &serverapi.ServerConfiguration{
-		URL:         "http://{host}:{port}",
+		URL:         fmt.Sprintf("%s://{host}:{port}", scheme),
 		Description: "Development server",
 		Variables: map[string]serverapi.ServerVariable{
 			"host": {
@@ -168,6 +176,44 @@ func createApiClient(serverAddr string) (*serverapi.APIClient, error) {
 	configuration.Servers = serverapi.ServerConfigurations{
 		*serverConfiguration,
 	}
+
+	// Configure TLS if enabled
+	if clientConfig.TLS.Enabled {
+		tlsConfig := &tls.Config{}
+		
+		// Load client certificate if provided
+		if clientConfig.TLS.CertFile != "" && clientConfig.TLS.KeyFile != "" {
+			cert, err := tls.LoadX509KeyPair(clientConfig.TLS.CertFile, clientConfig.TLS.KeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load client certificate: %v", err)
+			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
+		}
+
+		// For self-signed certificates, you might want to add the CA or skip verification
+		// WARNING: Only use InsecureSkipVerify for development/testing
+		if clientConfig.TLS.CertFile != "" {
+			// Try to load the server certificate as a CA
+			caCert, err := ioutil.ReadFile(clientConfig.TLS.CertFile)
+			if err == nil {
+				caCertPool := x509.NewCertPool()
+				if caCertPool.AppendCertsFromPEM(caCert) {
+					tlsConfig.RootCAs = caCertPool
+				}
+			}
+		}
+
+		// For development with self-signed certificates
+		tlsConfig.InsecureSkipVerify = true
+
+		transport := &http.Transport{
+			TLSClientConfig: tlsConfig,
+		}
+		configuration.HTTPClient = &http.Client{
+			Transport: transport,
+		}
+	}
+
 	apiClient = serverapi.NewAPIClient(configuration)
 
 	return apiClient, nil
@@ -333,6 +379,7 @@ func main() {
 
 			apiClient, err = createApiClient(
 				fmt.Sprintf("%s:%s", clientConfig.ServerHost, clientConfig.ServerPort),
+				clientConfig,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to initialize api client: %v", err)

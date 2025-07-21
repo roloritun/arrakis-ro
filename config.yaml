@@ -2,6 +2,10 @@ hostservices:
   restserver:
     host: "0.0.0.0"
     port: "7000"
+    tls:
+      enabled: true
+      cert_file: "./certs/server.crt"
+      key_file: "./certs/server.key"
     state_dir: "./vm-state"
     bridge_name: "br0"
     bridge_ip: "10.20.1.1/24"
@@ -24,6 +28,10 @@ hostservices:
   client:
     server_host: "127.0.0.1"
     server_port: "7000"
+    tls:
+      enabled: true
+      cert_file: "./certs/server.crt"
+      key_file: "./certs/server.key"
 guestservices:
   codeserver:
     port: "4030"
@@ -31,5 +39,13 @@ guestservices:
     port: "4031"
   novncserver:
     port: "6080"
+    tls:
+      enabled: true
+      cert_file: "./certs/server.crt"
+      key_file: "./certs/server.key"
   cdpserver:
     port: "9222"
+    tls:
+      enabled: true
+      cert_file: "./certs/server.crt"
+      key_file: "./certs/server.key"

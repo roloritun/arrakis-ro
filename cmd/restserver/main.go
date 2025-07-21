@@ -448,7 +448,7 @@ func main() {
 	r.HandleFunc("/"+API_VERSION+"/vms/{name}/files", s.vmFileDownload).Methods("GET")
 	r.HandleFunc("/"+API_VERSION+"/health", s.healthCheck).Methods("GET")
 
-	// Start HTTP server - Force IPv4 binding to avoid IPv6-only issues
+	// Start HTTP/HTTPS server - Force IPv4 binding to avoid IPv6-only issues
 	addr := serverConfig.Host + ":" + serverConfig.Port
 	
 	// Create IPv4 listener explicitly
@@ -462,9 +462,16 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("REST server listening on IPv4: %s", addr)
-		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start server: %v", err)
+		if serverConfig.TLS.Enabled {
+			log.Printf("HTTPS server listening on IPv4: %s", addr)
+			if err := srv.ServeTLS(listener, serverConfig.TLS.CertFile, serverConfig.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to start HTTPS server: %v", err)
+			}
+		} else {
+			log.Printf("HTTP server listening on IPv4: %s", addr)
+			if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Failed to start HTTP server: %v", err)
+			}
 		}
 	}()
 
