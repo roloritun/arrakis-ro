@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -447,15 +448,22 @@ func main() {
 	r.HandleFunc("/"+API_VERSION+"/vms/{name}/files", s.vmFileDownload).Methods("GET")
 	r.HandleFunc("/"+API_VERSION+"/health", s.healthCheck).Methods("GET")
 
-	// Start HTTP server
+	// Start HTTP server - Force IPv4 binding to avoid IPv6-only issues
+	addr := serverConfig.Host + ":" + serverConfig.Port
+	
+	// Create IPv4 listener explicitly
+	listener, err := net.Listen("tcp4", addr)
+	if err != nil {
+		log.Fatalf("Failed to create IPv4 listener: %v", err)
+	}
+	
 	srv := &http.Server{
-		Addr:    serverConfig.Host + ":" + serverConfig.Port,
 		Handler: r,
 	}
 
 	go func() {
-		log.Printf("REST server listening on: %s:%s", serverConfig.Host, serverConfig.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("REST server listening on IPv4: %s", addr)
+		if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
