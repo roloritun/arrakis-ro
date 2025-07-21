@@ -134,7 +134,6 @@ func (s *novncServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 </body>
 </html>`)
 }
-}
 
 func main() {
 	var novncConfig *config.NoVNCServerConfig
