@@ -6,8 +6,8 @@ Requires=arrakis-vncserver.service
 [Service]
 Type=simple
 User=elara
-WorkingDirectory=/opt/novnc
-ExecStart=/usr/local/bin/start-novnc
+WorkingDirectory=/home/elara
+ExecStart=/usr/local/bin/arrakis-novncserver --config /etc/config.yaml
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

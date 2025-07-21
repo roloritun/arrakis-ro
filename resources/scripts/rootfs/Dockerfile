@@ -62,6 +62,7 @@ RUN apt-get update && \
     xfce4-goodies \
     zsh \
     tigervnc-standalone-server \
+    novnc \
     socat \
     strace \
     && apt-get clean \
@@ -142,10 +143,11 @@ RUN pip3 install patchright && \
     # Create symlink for CDP server compatibility
     ln -sf /usr/local/bin/patchright-chrome /usr/local/bin/chromium-browser
 
-# Install noVNC
-RUN git clone https://github.com/novnc/noVNC.git /opt/novnc && \
+# Install noVNC and websockify
+RUN apt-get update && apt-get install -y python3-websockify && \
+    git clone https://github.com/novnc/noVNC.git /opt/novnc && \
     ln -s /opt/novnc/vnc.html /opt/novnc/index.html && \
-    chmod +x /opt/novnc/utils/novnc_proxy && \
-    # Create a simple wrapper script for noVNC
-    echo '#!/bin/bash\ncd /opt/novnc && ./utils/novnc_proxy --vnc localhost:5901 --listen 6080' > /usr/local/bin/novnc && \
-    chmod +x /usr/local/bin/novnc
+    # Create noVNC service script
+    echo '#!/bin/bash\ncd /opt/novnc && python3 -m websockify.websockify 6080 localhost:5901' > /usr/local/bin/start-novnc && \
+    chmod +x /usr/local/bin/start-novnc && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*

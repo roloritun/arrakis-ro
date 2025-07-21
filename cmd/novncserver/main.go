@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 
@@ -19,6 +22,12 @@ import (
 const (
 	baseDir = "/tmp/novncserver"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for simplicity
+	},
+}
 
 type novncServer struct {
 	port string
@@ -31,24 +40,100 @@ func (s *novncServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status": "healthy", "service": "novnc"}`)
 }
 
-// Proxy endpoint for noVNC
+// WebSocket proxy for VNC connection
+func (s *novncServer) websocketHandler(w http.ResponseWriter, r *http.Request) {
+	// Upgrade HTTP connection to WebSocket
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade failed: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Connect to VNC server
+	vncConn, err := net.Dial("tcp", "localhost:5901")
+	if err != nil {
+		log.Printf("Failed to connect to VNC server: %v", err)
+		return
+	}
+	defer vncConn.Close()
+
+	// Bidirectional proxy between WebSocket and VNC
+	go func() {
+		for {
+			_, message, err := conn.ReadMessage()
+			if err != nil {
+				log.Printf("WebSocket read error: %v", err)
+				break
+			}
+			if _, err := vncConn.Write(message); err != nil {
+				log.Printf("VNC write error: %v", err)
+				break
+			}
+		}
+	}()
+
+	// Read from VNC and send to WebSocket
+	buffer := make([]byte, 4096)
+	for {
+		n, err := vncConn.Read(buffer)
+		if err != nil {
+			if err != io.EOF {
+				log.Printf("VNC read error: %v", err)
+			}
+			break
+		}
+		if err := conn.WriteMessage(websocket.BinaryMessage, buffer[:n]); err != nil {
+			log.Printf("WebSocket write error: %v", err)
+			break
+		}
+	}
+}
+
+// Serve a functional noVNC web interface
 func (s *novncServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
-	// This would typically proxy to the noVNC service
-	// For now, we'll return a simple response indicating the service is running
+	// Serve a working noVNC interface that connects via websocket
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `
-<!DOCTYPE html>
+	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
-    <title>NoVNC Access</title>
+    <title>noVNC Remote Desktop</title>
+    <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/rfb.js"></script>
+    <style>
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; }
+        #screen { border: 1px solid #ccc; }
+        .status { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+    </style>
 </head>
 <body>
-    <h1>NoVNC Server</h1>
-    <p>NoVNC service is running on port %s</p>
-    <p>Connect to VNC server at localhost:5901</p>
+    <h1>Arrakis Remote Desktop</h1>
+    <div class="status" id="status">Connecting...</div>
+    <canvas id="screen" width="800" height="600"></canvas>
+    
+    <script>
+        const rfb = new RFB(document.getElementById('screen'), 
+                           'ws://' + window.location.host + '/websockify', {
+            credentials: { password: 'elara0000' }
+        });
+        
+        rfb.addEventListener("connect", () => {
+            document.getElementById('status').textContent = 'Connected to remote desktop';
+            document.getElementById('status').style.background = '#d4edda';
+        });
+        
+        rfb.addEventListener("disconnect", () => {
+            document.getElementById('status').textContent = 'Disconnected from remote desktop';
+            document.getElementById('status').style.background = '#f8d7da';
+        });
+        
+        rfb.scaleViewport = true;
+        rfb.resizeSession = true;
+    </script>
 </body>
-</html>`, s.port)
+</html>`)
+}
 }
 
 func main() {
@@ -95,6 +180,7 @@ func main() {
 
 	// Register routes
 	r.HandleFunc("/health", s.healthCheck).Methods("GET")
+	r.HandleFunc("/websockify", s.websocketHandler)
 	r.HandleFunc("/", s.proxyHandler).Methods("GET")
 	r.PathPrefix("/").HandlerFunc(s.proxyHandler)
 
