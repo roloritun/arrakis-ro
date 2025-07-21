@@ -6,8 +6,8 @@ Requires=arrakis-vncserver.service
 [Service]
 Type=simple
 User=elara
-WorkingDirectory=/opt/novnc
-ExecStart=/opt/novnc/utils/novnc_proxy --listen 6080 --vnc localhost:5901
+WorkingDirectory=/home/elara
+ExecStart=/usr/local/bin/arrakis-novncserver
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
