@@ -106,6 +106,9 @@ RUN chmod +x /usr/local/bin/${VSOCKSERVER_BIN}
 COPY ${RESOURCES_DIR}/${VSOCKSERVER_BIN}.service /usr/lib/systemd/system/${VSOCKSERVER_BIN}.service
 RUN ln -s /usr/lib/systemd/system/${VSOCKSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${VSOCKSERVER_BIN}.service
 
+# Copy guest configuration file
+COPY ${RESOURCES_DIR}/guest-config.yaml /etc/config.yaml
+
 ARG NOVNCSERVER_BIN=arrakis-novncserver
 COPY ${OUT_DIR}/${NOVNCSERVER_BIN} /usr/local/bin/${NOVNCSERVER_BIN}
 RUN chmod +x /usr/local/bin/${NOVNCSERVER_BIN}

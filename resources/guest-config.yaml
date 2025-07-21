@@ -1,0 +1,5 @@
+guestservices:
+  novncserver:
+    port: "6080"
+  cdpserver:
+    port: "9222"
