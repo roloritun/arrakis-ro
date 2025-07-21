@@ -40,7 +40,7 @@ func (s *novncServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status": "healthy", "service": "novnc"}`)
 }
 
-// WebSocket proxy for VNC connection
+// WebSocket proxy for VNC connection (websockify protocol)
 func (s *novncServer) websocketHandler(w http.ResponseWriter, r *http.Request) {
 	// Upgrade HTTP connection to WebSocket
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -63,207 +63,218 @@ func (s *novncServer) websocketHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Connected to VNC server at localhost:5901")
 
-	// Bidirectional proxy between WebSocket and VNC
+	// Channel to signal connection close
+	done := make(chan struct{})
+
 	// Handle WebSocket to VNC direction
 	go func() {
-		defer vncConn.Close()
+		defer close(done)
 		for {
 			messageType, message, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("WebSocket read error: %v", err)
-				break
+				return
 			}
 			
-			// Only handle binary messages for VNC protocol
-			if messageType == websocket.BinaryMessage {
-				if _, err := vncConn.Write(message); err != nil {
+			// Handle both binary and text messages (websockify protocol)
+			if messageType == websocket.BinaryMessage || messageType == websocket.TextMessage {
+				// For websockify, we may receive base64 encoded data in text messages
+				var data []byte
+				if messageType == websocket.TextMessage {
+					// For text messages, assume they are base64 encoded VNC data
+					log.Printf("Received text message, treating as binary")
+					data = message
+				} else {
+					data = message
+				}
+				
+				if _, err := vncConn.Write(data); err != nil {
 					log.Printf("VNC write error: %v", err)
-					break
+					return
 				}
 			}
 		}
 	}()
 
 	// Handle VNC to WebSocket direction
-	buffer := make([]byte, 4096)
-	for {
-		n, err := vncConn.Read(buffer)
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("VNC read error: %v", err)
+	go func() {
+		buffer := make([]byte, 4096)
+		for {
+			n, err := vncConn.Read(buffer)
+			if err != nil {
+				if err != io.EOF {
+					log.Printf("VNC read error: %v", err)
+				}
+				close(done)
+				return
 			}
-			break
+			if err := conn.WriteMessage(websocket.BinaryMessage, buffer[:n]); err != nil {
+				log.Printf("WebSocket write error: %v", err)
+				close(done)
+				return
+			}
 		}
-		if err := conn.WriteMessage(websocket.BinaryMessage, buffer[:n]); err != nil {
-			log.Printf("WebSocket write error: %v", err)
-			break
-		}
-	}
-	
+	}()
+
+	// Wait for either direction to close
+	<-done
 	log.Printf("WebSocket connection closed for %s", r.RemoteAddr)
 }
 
-// Serve a functional noVNC web interface
+// Serve the standard noVNC client interface
 func (s *novncServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
-	// Serve a working noVNC interface that connects via websocket
+	// Serve the standard noVNC vnc.html with proper websocket configuration
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
+	
+	// Use the standard noVNC client from CDN with proper websockify configuration
 	fmt.Fprintf(w, `<!DOCTYPE html>
 <html>
 <head>
-    <title>noVNC Remote Desktop</title>
+    <title>noVNC</title>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/rfb.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/util/events.js"></script>
-    <style>
-        body { 
-            margin: 0; 
-            padding: 20px; 
-            font-family: Arial, sans-serif; 
-            background: #f5f5f5;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
-        }
-        .controls {
-            margin: 10px 0;
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        .status { 
-            margin: 10px 0; 
-            padding: 10px; 
-            background: #fff3cd; 
-            border: 1px solid #ffeaa7;
-            border-radius: 4px;
-            font-weight: bold;
-        }
-        .status.connected { 
-            background: #d4edda; 
-            border-color: #c3e6cb; 
-            color: #155724;
-        }
-        .status.disconnected { 
-            background: #f8d7da; 
-            border-color: #f5c6cb; 
-            color: #721c24;
-        }
-        #noVNC_container {
-            margin: 20px 0;
-            border: 2px solid #ddd;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        #noVNC_screen {
-            display: block;
-        }
-        button {
-            padding: 8px 16px;
-            margin: 5px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            background: white;
-            cursor: pointer;
-        }
-        button:hover {
-            background: #f8f9fa;
-        }
-    </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/novnc@1.4.0/app/styles/base.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/novnc@1.4.0/app/styles/ui.css">
+    <link rel="icon" sizes="16x16" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAB3RJTUUH3gQSFCURp1uHSgAAAZZJREFUOMulkz1LA0EQhp9JQhBbwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sLwcJCG1sL">
 </head>
-<body>
-    <div class="container">
-        <h1>Arrakis Remote Desktop - noVNC</h1>
-        
-        <div class="controls">
-            <button onclick="connectVNC()">Connect</button>
-            <button onclick="disconnectVNC()">Disconnect</button>
-            <button onclick="sendCtrlAltDel()">Ctrl+Alt+Del</button>
+
+<body id="noVNC_body">
+    <div id="noVNC_container">
+        <!-- Status/errors -->
+        <div id="noVNC_status_bar">
+            <table border="0">
+                <tr>
+                    <td>
+                        <div id="noVNC_status"></div>
+                    </td>
+                    <td width="1%">
+                        <div id="noVNC_buttons">
+                            <input type="button" value="Send CtrlAltDel" id="sendCtrlAltDelButton">
+                            <span id="noVNC_xvp_buttons">
+                                <input type="button" value="Shutdown" id="xvpShutdownButton">
+                                <input type="button" value="Reboot" id="xvpRebootButton">
+                                <input type="button" value="Reset" id="xvpResetButton">
+                            </span>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         </div>
-        
-        <div class="status" id="status">Click Connect to start remote desktop session</div>
-        
-        <div id="noVNC_container">
-            <canvas id="noVNC_screen" width="1024" height="768">
+
+        <!-- Scrollable VNC area -->
+        <div id="noVNC_viewport">
+            <canvas id="noVNC_canvas" width="640" height="480" style="cursor: none;">
                 Canvas not supported.
             </canvas>
         </div>
+
+        <!-- Settings Panel -->
+        <div id="noVNC_settings">
+            <ul>
+                <li><input id="noVNC_setting_encrypt" type="checkbox"> Encrypt</li>
+                <li><input id="noVNC_setting_true_color" type="checkbox" checked> True Color</li>
+                <li><input id="noVNC_setting_cursor" type="checkbox" checked> Local Cursor</li>
+                <li><input id="noVNC_setting_clip" type="checkbox" checked> Clip to Window</li>
+                <li><input id="noVNC_setting_resize" type="checkbox" checked> Resize</li>
+                <li><input id="noVNC_setting_shared" type="checkbox"> Shared Mode</li>
+                <li><input id="noVNC_setting_view_only" type="checkbox"> View Only</li>
+                <li><input id="noVNC_setting_path" type="input" value="websockify"> Path</li>
+                <li><input id="noVNC_setting_repeaterID" type="input"> Repeater ID</li>
+                <li><input id="noVNC_setting_logging" type="input"> Logging</li>
+            </ul>
+        </div>
+
+        <!-- Connection Panel -->
+        <div id="noVNC_controls">
+            <ul>
+                <li><label><strong>Host:</strong> <input id="noVNC_setting_host" value="` + r.Host + `"/></label></li>
+                <li><label><strong>Port:</strong> <input id="noVNC_setting_port" value="` + s.port + `"/></label></li>
+                <li><label><strong>Password:</strong> <input id="noVNC_setting_password" type="password" value="elara0000"/></label></li>
+                <li><input id="noVNC_connect_button" type="button" value="Connect"/></li>
+            </ul>
+        </div>
     </div>
-    
+
+    <!-- Include standard noVNC JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/util/logging.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/util/base64.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/websock.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/des.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/input/keysymdef.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/input/xtscancodes.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/input/util.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/input/devices.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/display.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/inflator.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/lib/rfb.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/novnc@1.4.0/app/ui.js"></script>
+
     <script>
-        let rfb = null;
-        
-        function updateStatus(text, type = '') {
-            const status = document.getElementById('status');
-            status.textContent = text;
-            status.className = 'status';
-            if (type) status.classList.add(type);
+        // Standard noVNC UI initialization
+        var UI = {};
+
+        // Initialize noVNC
+        function initNoVNC() {
+            var host = document.getElementById('noVNC_setting_host').value;
+            var port = document.getElementById('noVNC_setting_port').value;
+            var password = document.getElementById('noVNC_setting_password').value;
+            var path = document.getElementById('noVNC_setting_path').value;
+            
+            // Build WebSocket URL for our websockify endpoint
+            var url = 'ws://' + host + '/' + path;
+            
+            UI.rfb = new RFB(document.getElementById('noVNC_canvas'), url, {
+                credentials: { password: password }
+            });
+
+            UI.rfb.addEventListener("connect", UI.connected);
+            UI.rfb.addEventListener("disconnect", UI.disconnected);
+            UI.rfb.addEventListener("credentialsrequired", UI.credentialsRequired);
+            UI.rfb.addEventListener("securityfailure", UI.securityFailed);
         }
-        
-        function connectVNC() {
-            if (rfb) {
-                rfb.disconnect();
+
+        UI.connected = function() {
+            document.getElementById('noVNC_status').textContent = 'Connected';
+            document.getElementById('noVNC_connect_button').value = 'Disconnect';
+            document.getElementById('noVNC_connect_button').onclick = UI.disconnect;
+        };
+
+        UI.disconnected = function() {
+            document.getElementById('noVNC_status').textContent = 'Disconnected';
+            document.getElementById('noVNC_connect_button').value = 'Connect';
+            document.getElementById('noVNC_connect_button').onclick = UI.connect;
+        };
+
+        UI.credentialsRequired = function() {
+            document.getElementById('noVNC_status').textContent = 'Credentials Required';
+        };
+
+        UI.securityFailed = function() {
+            document.getElementById('noVNC_status').textContent = 'Security Failed';
+        };
+
+        UI.connect = function() {
+            document.getElementById('noVNC_status').textContent = 'Connecting...';
+            initNoVNC();
+        };
+
+        UI.disconnect = function() {
+            if (UI.rfb) {
+                UI.rfb.disconnect();
+                UI.rfb = null;
             }
-            
-            updateStatus('Connecting to VNC server...');
-            
-            const host = window.location.host;
-            const url = 'ws://' + host + '/websockify';
-            
-            rfb = new RFB(document.getElementById('noVNC_screen'), url, {
-                credentials: { password: 'elara0000' }
-            });
-            
-            rfb.addEventListener("connect", () => {
-                updateStatus('Connected to remote desktop', 'connected');
-            });
-            
-            rfb.addEventListener("disconnect", (e) => {
-                updateStatus('Disconnected: ' + e.detail.reason, 'disconnected');
-                rfb = null;
-            });
-            
-            rfb.addEventListener("credentialsrequired", () => {
-                updateStatus('VNC authentication required');
-            });
-            
-            rfb.addEventListener("securityfailure", (e) => {
-                updateStatus('Security failure: ' + e.detail.reason, 'disconnected');
-            });
-            
-            // Configure noVNC settings
-            rfb.scaleViewport = true;
-            rfb.resizeSession = true;
-        }
-        
-        function disconnectVNC() {
-            if (rfb) {
-                rfb.disconnect();
-                rfb = null;
-            }
-            updateStatus('Disconnected', 'disconnected');
-        }
-        
-        function sendCtrlAltDel() {
-            if (rfb) {
-                rfb.sendCtrlAltDel();
-            }
-        }
-        
-        // Auto-connect on page load
-        window.addEventListener('load', () => {
-            setTimeout(connectVNC, 1000);
-        });
+        };
+
+        // Setup event handlers
+        document.getElementById('noVNC_connect_button').onclick = UI.connect;
+        document.getElementById('sendCtrlAltDelButton').onclick = function() {
+            if (UI.rfb) UI.rfb.sendCtrlAltDel();
+        };
+
+        // Auto-connect after a short delay
+        setTimeout(function() {
+            document.getElementById('noVNC_connect_button').click();
+        }, 1000);
     </script>
 </body>
 </html>`)
