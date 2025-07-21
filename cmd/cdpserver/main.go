@@ -35,13 +35,18 @@ func (s *cdpServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 
 // CDP endpoints proxy
 func (s *cdpServer) versionHandler(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if host == "" {
+		host = "localhost:3007" // fallback
+	}
+	
 	response := map[string]interface{}{
 		"Browser":              "Chromium/120.0.0.0",
 		"Protocol-Version":     "1.3",
 		"User-Agent":           "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
 		"V8-Version":           "12.0.267.17",
 		"WebKit-Version":       "537.36",
-		"webSocketDebuggerUrl": fmt.Sprintf("ws://localhost:%s/devtools/browser/", s.port),
+		"webSocketDebuggerUrl": fmt.Sprintf("ws://%s/devtools/browser/", host),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -49,15 +54,20 @@ func (s *cdpServer) versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *cdpServer) listHandler(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	if host == "" {
+		host = "localhost:3007" // fallback
+	}
+	
 	response := []map[string]interface{}{
 		{
 			"description":          "",
-			"devtoolsFrontendUrl":  fmt.Sprintf("/devtools/inspector.html?ws=localhost:%s/devtools/page/", s.port),
+			"devtoolsFrontendUrl":  fmt.Sprintf("/devtools/inspector.html?ws=%s/devtools/page/", host),
 			"id":                   "page_1",
 			"title":                "New Tab",
 			"type":                 "page",
 			"url":                  "about:blank",
-			"webSocketDebuggerUrl": fmt.Sprintf("ws://localhost:%s/devtools/page/page_1", s.port),
+			"webSocketDebuggerUrl": fmt.Sprintf("ws://%s/devtools/page/page_1", host),
 		},
 	}
 
