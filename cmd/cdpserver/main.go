@@ -75,22 +75,23 @@ func (s *cdpServer) listHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Start Chromium in headless mode with CDP enabled
-func (s *cdpServer) startChromeHeadless() error {
+// Start Chromium with GUI (non-headless) and CDP enabled
+func (s *cdpServer) startChrome() error {
 	cmd := exec.Command(
 		"chromium-browser",
-		"--headless",
 		"--no-sandbox",
-		"--disable-gpu",
 		"--disable-dev-shm-usage",
 		"--remote-debugging-address=0.0.0.0",
 		fmt.Sprintf("--remote-debugging-port=%s", s.port),
 		"--disable-extensions",
 		"--disable-plugins",
-		"--disable-images",
+		"--disable-web-security",
+		"--disable-features=VizDisplayCompositor",
+		"--start-maximized",
+		"--display=:1",
 	)
 
-	log.Info("Starting Chromium in headless mode for CDP")
+	log.Info("Starting Chromium with GUI for CDP (visible via noVNC)")
 	return cmd.Start()
 }
 
@@ -135,8 +136,8 @@ func main() {
 	// Create CDP server
 	s := &cdpServer{port: cdpConfig.Port}
 
-	// Start Chromium in headless mode
-	err = s.startChromeHeadless()
+	// Start Chromium with GUI
+	err = s.startChrome()
 	if err != nil {
 		log.Fatalf("Failed to start Chromium: %v", err)
 	}
