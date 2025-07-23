@@ -116,12 +116,6 @@ RUN chmod +x /usr/local/bin/${NOVNCSERVER_BIN}
 COPY ${RESOURCES_DIR}/${NOVNCSERVER_BIN}.service /usr/lib/systemd/system/${NOVNCSERVER_BIN}.service
 RUN ln -s /usr/lib/systemd/system/${NOVNCSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${NOVNCSERVER_BIN}.service
 
-ARG CDPSERVER_BIN=arrakis-cdpserver
-COPY ${OUT_DIR}/${CDPSERVER_BIN} /usr/local/bin/${CDPSERVER_BIN}
-RUN chmod +x /usr/local/bin/${CDPSERVER_BIN}
-COPY ${RESOURCES_DIR}/${CDPSERVER_BIN}.service /usr/lib/systemd/system/${CDPSERVER_BIN}.service
-RUN ln -s /usr/lib/systemd/system/${CDPSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${CDPSERVER_BIN}.service
-
 # Add Chrome auto-start service
 COPY ${RESOURCES_DIR}/arrakis-chrome.service /usr/lib/systemd/system/arrakis-chrome.service
 RUN ln -s /usr/lib/systemd/system/arrakis-chrome.service /etc/systemd/system/multi-user.target.wants/arrakis-chrome.service

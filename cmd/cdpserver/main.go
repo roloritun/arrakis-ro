@@ -59,15 +59,22 @@ func (s *cdpServer) discoverCDPPort() (string, error) {
 		return "", fmt.Errorf("failed to read response: %v", err)
 	}
 
+	log.Debugf("VM API response: %s", string(body))
+
 	var vmResponse VMResponse
 	if err := json.Unmarshal(body, &vmResponse); err != nil {
 		return "", fmt.Errorf("failed to parse VM response: %v", err)
 	}
 
+	log.Infof("Found %d VMs in response", len(vmResponse.VMs))
+
 	// Find the first running VM with CDP port forwarding
 	for _, vm := range vmResponse.VMs {
+		log.Infof("Checking VM '%s' with status '%s'", vm.VMName, vm.Status)
 		if vm.Status == "RUNNING" {
+			log.Infof("VM '%s' has %d port forwards", vm.VMName, len(vm.PortForwards))
 			for _, pf := range vm.PortForwards {
+				log.Debugf("Port forward: guest:%s -> host:%s (%s)", pf.GuestPort, pf.HostPort, pf.Description)
 				if pf.GuestPort == "9222" && pf.Description == "cdp" {
 					log.Infof("Found running VM '%s' with CDP port forwarded from guest:%s to host:%s", 
 						vm.VMName, pf.GuestPort, pf.HostPort)
