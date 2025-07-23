@@ -1,7 +1,9 @@
 # Exclude large files and directories from Docker build context
 vm-state/
 *.tar.gz
-out/
+out/gen/
 .git/
 nohup.out
 *.log
+# Keep the built binaries for Docker
+!out/arrakis-*
