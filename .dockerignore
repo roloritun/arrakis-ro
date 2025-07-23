@@ -1,0 +1,7 @@
+# Exclude large files and directories from Docker build context
+vm-state/
+*.tar.gz
+out/
+.git/
+nohup.out
+*.log
