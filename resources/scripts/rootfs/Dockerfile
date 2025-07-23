@@ -120,6 +120,10 @@ RUN ln -s /usr/lib/systemd/system/${NOVNCSERVER_BIN}.service /etc/systemd/system
 COPY ${RESOURCES_DIR}/arrakis-chrome.service /usr/lib/systemd/system/arrakis-chrome.service
 RUN ln -s /usr/lib/systemd/system/arrakis-chrome.service /etc/systemd/system/multi-user.target.wants/arrakis-chrome.service
 
+# Add Chrome CDP port forwarder service (forwards from 0.0.0.0:9223 to 127.0.0.1:9222)
+COPY ${RESOURCES_DIR}/arrakis-chrome-forwarder.service /usr/lib/systemd/system/arrakis-chrome-forwarder.service
+RUN ln -s /usr/lib/systemd/system/arrakis-chrome-forwarder.service /etc/systemd/system/multi-user.target.wants/arrakis-chrome-forwarder.service
+
 # Prevent the renaming service that will change "eth0" to "ens*". If not done our init service
 # inside the guest has race conditions while configuring the network.
 RUN ln -s /dev/null /etc/systemd/network/99-default.link

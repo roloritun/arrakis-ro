@@ -17,7 +17,7 @@ hostservices:
         description: "code"
       - port: "6080"
         description: "novnc"
-      - port: "9222"
+      - port: "9223"
         description: "cdp"
     stateful_size_in_mb: "2048"
     guest_mem_percentage: "30"

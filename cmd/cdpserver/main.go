@@ -81,7 +81,7 @@ func (s *cdpServer) discoverCDPPort(vmName string) (string, error) {
 			log.Infof("VM '%s' has %d port forwards", vm.VMName, len(vm.PortForwards))
 			for _, pf := range vm.PortForwards {
 				log.Debugf("Port forward: guest:%s -> host:%s (%s)", pf.GuestPort, pf.HostPort, pf.Description)
-				if pf.GuestPort == "9222" && pf.Description == "cdp" {
+				if pf.GuestPort == "9223" && pf.Description == "cdp" {
 					log.Infof("Found running VM '%s' with CDP port forwarded from guest:%s to host:%s", 
 						vm.VMName, pf.GuestPort, pf.HostPort)
 					return pf.HostPort, nil
