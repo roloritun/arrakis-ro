@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 
@@ -24,6 +26,80 @@ const (
 
 type cdpServer struct {
 	port string
+}
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for development
+	},
+}
+
+// WebSocket proxy handler for DevTools connections
+func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
+	// Upgrade the HTTP connection to WebSocket
+	clientConn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Errorf("Failed to upgrade WebSocket: %v", err)
+		return
+	}
+	defer clientConn.Close()
+
+	// Extract the target path - Chrome expects the same path structure
+	targetPath := r.URL.Path
+	if r.URL.RawQuery != "" {
+		targetPath += "?" + r.URL.RawQuery
+	}
+
+	// Connect to local Chrome DevTools WebSocket
+	chromeURL := fmt.Sprintf("ws://localhost:%s%s", s.port, targetPath)
+	log.Infof("Proxying WebSocket to: %s", chromeURL)
+
+	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
+	if err != nil {
+		log.Errorf("Failed to connect to Chrome DevTools: %v", err)
+		clientConn.WriteMessage(websocket.CloseMessage, []byte("Failed to connect to Chrome"))
+		return
+	}
+	defer chromeConn.Close()
+
+	// Proxy messages in both directions
+	done := make(chan struct{})
+
+	// Client -> Chrome
+	go func() {
+		defer close(done)
+		for {
+			messageType, data, err := clientConn.ReadMessage()
+			if err != nil {
+				log.Debugf("Client connection closed: %v", err)
+				return
+			}
+			if err := chromeConn.WriteMessage(messageType, data); err != nil {
+				log.Debugf("Failed to write to Chrome: %v", err)
+				return
+			}
+		}
+	}()
+
+	// Chrome -> Client
+	go func() {
+		defer close(done)
+		for {
+			messageType, data, err := chromeConn.ReadMessage()
+			if err != nil {
+				log.Debugf("Chrome connection closed: %v", err)
+				return
+			}
+			if err := clientConn.WriteMessage(messageType, data); err != nil {
+				log.Debugf("Failed to write to client: %v", err)
+				return
+			}
+		}
+	}()
+
+	// Wait for either connection to close
+	<-done
+	log.Debug("WebSocket proxy connection closed")
 }
 
 // Health check endpoint
@@ -153,6 +229,10 @@ func main() {
 	r.HandleFunc("/json/version", s.versionHandler).Methods("GET")
 	r.HandleFunc("/json", s.listHandler).Methods("GET")
 	r.HandleFunc("/json/list", s.listHandler).Methods("GET")
+
+	// Register WebSocket routes for DevTools
+	r.HandleFunc("/devtools/browser/", s.websocketProxy)
+	r.HandleFunc("/devtools/page/{pageId}", s.websocketProxy)
 
 	// Start HTTP server
 	srv := &http.Server{
