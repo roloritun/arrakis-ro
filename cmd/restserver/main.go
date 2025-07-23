@@ -434,6 +434,7 @@ func main() {
 	// Create REST server
 	s := &restServer{vmServer: vmServer}
 	r := mux.NewRouter()
+	r.StrictSlash(true) // Automatically handle trailing slashes
 
 	// Register routes
 	r.HandleFunc("/"+API_VERSION+"/vms", s.startVM).Methods("POST")

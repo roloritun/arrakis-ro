@@ -243,6 +243,7 @@ func main() {
 	// Create NoVNC server
 	s := &novncServer{port: novncConfig.Port}
 	r := mux.NewRouter()
+	r.StrictSlash(true) // Automatically handle trailing slashes
 
 	// Register routes
 	r.HandleFunc("/health", s.healthCheck).Methods("GET")
