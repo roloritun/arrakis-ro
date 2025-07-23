@@ -132,23 +132,41 @@ RUN curl -fsSL https://nodejs.org/dist/v18.20.4/node-v18.20.4-linux-x64.tar.xz |
     ln -s /opt/node-v18.20.4-linux-x64/bin/npx /usr/local/bin/npx
 
 # Install Patchright (better than Playwright for AI automation) and Chromium
-# Install as root first, then for elara user
-RUN pip3 install patchright
+# Install system dependencies first, then install Patchright as elara user
+RUN apt-get update && apt-get install -y \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libxss1 \
+    libasound2 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Switch to elara user to install Patchright browsers
+# Install Patchright as elara user
 USER elara
 WORKDIR /home/elara
-RUN patchright install chromium && \
-    patchright install-deps chromium
+RUN pip3 install --user patchright && \
+    ~/.local/bin/patchright install chromium && \
+    mkdir -p ~/.local/bin && \
+    echo '#!/bin/bash' > ~/.local/bin/patchright-chrome && \
+    echo 'CHROME_PATH=$(find ~/.cache/ms-playwright -name "chrome" -type f | head -1)' >> ~/.local/bin/patchright-chrome && \
+    echo 'if [ -z "$CHROME_PATH" ]; then' >> ~/.local/bin/patchright-chrome && \
+    echo '  echo "Chrome not found in ~/.cache/ms-playwright"' >> ~/.local/bin/patchright-chrome && \
+    echo '  exit 1' >> ~/.local/bin/patchright-chrome && \
+    echo 'fi' >> ~/.local/bin/patchright-chrome && \
+    echo 'exec "$CHROME_PATH" "$@"' >> ~/.local/bin/patchright-chrome && \
+    chmod +x ~/.local/bin/patchright-chrome
 
-# Switch back to root to continue setup
+# Switch back to root for remaining setup
 USER root
 WORKDIR /
 
-# Create a wrapper script to find and run Patchright Chromium for elara user
-RUN echo '#!/bin/bash\nCHROME_PATH=$(find /home/elara/.cache/patchright -name "chrome" -type f | head -1)\nif [ -z "$CHROME_PATH" ]; then\n  echo "Chrome not found in /home/elara/.cache/patchright"\n  exit 1\nfi\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
-    chmod +x /usr/local/bin/patchright-chrome && \
-    # Create symlink for CDP server compatibility
+# Create system-wide symlinks for Chrome
+RUN ln -sf /home/elara/.local/bin/patchright-chrome /usr/local/bin/patchright-chrome && \
     ln -sf /usr/local/bin/patchright-chrome /usr/local/bin/chromium-browser
 
 # Install noVNC and websockify
