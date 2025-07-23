@@ -24,7 +24,8 @@ const (
 )
 
 type cdpServer struct {
-	port string
+	port       string  // External port for our CDP server
+	chromePort string  // Internal port for Chrome's CDP interface
 }
 
 var upgrader = websocket.Upgrader{
@@ -52,7 +53,7 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Connect to local Chrome DevTools WebSocket
-	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", s.port, targetPath)
+	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", s.chromePort, targetPath)
 	log.Infof("Proxying WebSocket to Chrome: %s", chromeURL)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
@@ -173,7 +174,7 @@ func (s *cdpServer) startChrome() error {
 		"--no-sandbox",
 		"--disable-dev-shm-usage",
 		"--remote-debugging-address=0.0.0.0",
-		fmt.Sprintf("--remote-debugging-port=%s", s.port),
+		fmt.Sprintf("--remote-debugging-port=%s", s.chromePort),
 		"--disable-extensions",
 		"--disable-plugins",
 		"--disable-web-security",
@@ -182,7 +183,7 @@ func (s *cdpServer) startChrome() error {
 		"--display=:1",
 	)
 
-	log.Info("Starting Chromium with GUI for CDP (visible via noVNC)")
+	log.Infof("Starting Chromium with GUI for CDP on internal port %s (visible via noVNC)", s.chromePort)
 	return cmd.Start()
 }
 
@@ -225,7 +226,10 @@ func main() {
 	}
 
 	// Create CDP server
-	s := &cdpServer{port: cdpConfig.Port}
+	s := &cdpServer{
+		port:       cdpConfig.Port,  // External port (3007)
+		chromePort: "9222",          // Internal Chrome CDP port
+	}
 
 	// Start Chromium with GUI
 	err = s.startChrome()
