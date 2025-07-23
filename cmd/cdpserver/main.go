@@ -35,6 +35,8 @@ var upgrader = websocket.Upgrader{
 
 // WebSocket proxy handler for DevTools connections
 func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
+	log.Infof("WebSocket connection request: %s", r.URL.Path)
+	
 	// Upgrade the HTTP connection to WebSocket
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -50,8 +52,8 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Connect to local Chrome DevTools WebSocket
-	chromeURL := fmt.Sprintf("ws://localhost:%s%s", s.port, targetPath)
-	log.Infof("Proxying WebSocket to: %s", chromeURL)
+	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", s.port, targetPath)
+	log.Infof("Proxying WebSocket to Chrome: %s", chromeURL)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
 	if err != nil {
@@ -61,12 +63,20 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer chromeConn.Close()
 
+	log.Infof("Successfully connected to Chrome DevTools, starting proxy")
+
 	// Proxy messages in both directions
 	done := make(chan struct{})
 
 	// Client -> Chrome
 	go func() {
-		defer close(done)
+		defer func() {
+			select {
+			case <-done:
+			default:
+				close(done)
+			}
+		}()
 		for {
 			messageType, data, err := clientConn.ReadMessage()
 			if err != nil {
@@ -82,7 +92,13 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 
 	// Chrome -> Client
 	go func() {
-		defer close(done)
+		defer func() {
+			select {
+			case <-done:
+			default:
+				close(done)
+			}
+		}()
 		for {
 			messageType, data, err := chromeConn.ReadMessage()
 			if err != nil {
@@ -229,9 +245,10 @@ func main() {
 	r.HandleFunc("/json", s.listHandler).Methods("GET")
 	r.HandleFunc("/json/list", s.listHandler).Methods("GET")
 
-	// Register WebSocket routes for DevTools
+	// Register WebSocket routes for DevTools (order matters - more specific first)
 	r.HandleFunc("/devtools/browser/", s.websocketProxy)
 	r.HandleFunc("/devtools/page/{pageId}", s.websocketProxy)
+	r.PathPrefix("/devtools/").HandlerFunc(s.websocketProxy) // Catch-all for other DevTools WebSocket endpoints
 
 	// Start HTTP server
 	srv := &http.Server{
