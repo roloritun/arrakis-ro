@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -25,7 +26,59 @@ const (
 
 type cdpServer struct {
 	port       string  // External port for our CDP server
-	chromePort string  // Internal port for Chrome's CDP interface
+	restAPIURL string  // REST API URL to query VM info
+}
+
+// VM represents a VM from the REST API
+type VM struct {
+	VMName       string        `json:"vmName"`
+	Status       string        `json:"status"`
+	IP           string        `json:"ip"`
+	PortForwards []PortForward `json:"portForwards"`
+}
+
+type PortForward struct {
+	Description string `json:"description"`
+	GuestPort   string `json:"guestPort"`
+	HostPort    string `json:"hostPort"`
+}
+
+type VMResponse struct {
+	VMs []VM `json:"vms"`
+}
+
+// discoverCDPPort queries the REST API to find the dynamic CDP port for any running VM
+func (s *cdpServer) discoverCDPPort() (string, error) {
+	resp, err := http.Get(s.restAPIURL + "/v1/vms")
+	if err != nil {
+		return "", fmt.Errorf("failed to query VM API: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %v", err)
+	}
+
+	var vmResponse VMResponse
+	if err := json.Unmarshal(body, &vmResponse); err != nil {
+		return "", fmt.Errorf("failed to parse VM response: %v", err)
+	}
+
+	// Find the first running VM with CDP port forwarding
+	for _, vm := range vmResponse.VMs {
+		if vm.Status == "RUNNING" {
+			for _, pf := range vm.PortForwards {
+				if pf.GuestPort == "9222" && pf.Description == "cdp" {
+					log.Infof("Found running VM '%s' with CDP port forwarded from guest:%s to host:%s", 
+						vm.VMName, pf.GuestPort, pf.HostPort)
+					return pf.HostPort, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no running VM found with CDP port forwarding")
 }
 
 var upgrader = websocket.Upgrader{
@@ -38,13 +91,25 @@ var upgrader = websocket.Upgrader{
 func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	log.Infof("WebSocket connection request: %s", r.URL.Path)
 	
+	// Discover the dynamic CDP port for the running VM
+	cdpPort, err := s.discoverCDPPort()
+	if err != nil {
+		log.Errorf("Failed to discover CDP port: %v", err)
+		http.Error(w, "No VM with CDP available", http.StatusServiceUnavailable)
+		return
+	}
+	
 	// Upgrade the HTTP connection to WebSocket
 	clientConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Errorf("Failed to upgrade WebSocket: %v", err)
 		return
 	}
-	defer clientConn.Close()
+	defer func() {
+		if err := clientConn.Close(); err != nil {
+			log.Debugf("Error closing client connection: %v", err)
+		}
+	}()
 
 	// Extract the target path - Chrome expects the same path structure
 	targetPath := r.URL.Path
@@ -52,17 +117,22 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 		targetPath += "?" + r.URL.RawQuery
 	}
 
-	// Connect to local Chrome DevTools WebSocket
-	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", s.chromePort, targetPath)
+	// Connect to local Chrome DevTools WebSocket via dynamic port
+	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", cdpPort, targetPath)
 	log.Infof("Proxying WebSocket to Chrome: %s", chromeURL)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
 	if err != nil {
-		log.Errorf("Failed to connect to Chrome DevTools: %v", err)
-		clientConn.WriteMessage(websocket.CloseMessage, []byte("Failed to connect to Chrome"))
+		log.Errorf("Failed to connect to Chrome DevTools at %s: %v", chromeURL, err)
+		// Send close message to client instead of just returning
+		clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(1002, "Chrome not available"))
 		return
 	}
-	defer chromeConn.Close()
+	defer func() {
+		if err := chromeConn.Close(); err != nil {
+			log.Debugf("Error closing Chrome connection: %v", err)
+		}
+	}()
 
 	log.Infof("Successfully connected to Chrome DevTools, starting proxy")
 
@@ -72,6 +142,9 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	// Client -> Chrome
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("Panic in client->chrome proxy: %v", r)
+			}
 			select {
 			case <-done:
 			default:
@@ -79,14 +152,19 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		for {
-			messageType, data, err := clientConn.ReadMessage()
-			if err != nil {
-				log.Debugf("Client connection closed: %v", err)
+			select {
+			case <-done:
 				return
-			}
-			if err := chromeConn.WriteMessage(messageType, data); err != nil {
-				log.Debugf("Failed to write to Chrome: %v", err)
-				return
+			default:
+				messageType, data, err := clientConn.ReadMessage()
+				if err != nil {
+					log.Debugf("Client connection closed: %v", err)
+					return
+				}
+				if err := chromeConn.WriteMessage(messageType, data); err != nil {
+					log.Debugf("Failed to write to Chrome: %v", err)
+					return
+				}
 			}
 		}
 	}()
@@ -94,6 +172,9 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	// Chrome -> Client
 	go func() {
 		defer func() {
+			if r := recover(); r != nil {
+				log.Errorf("Panic in chrome->client proxy: %v", r)
+			}
 			select {
 			case <-done:
 			default:
@@ -101,14 +182,19 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 		for {
-			messageType, data, err := chromeConn.ReadMessage()
-			if err != nil {
-				log.Debugf("Chrome connection closed: %v", err)
+			select {
+			case <-done:
 				return
-			}
-			if err := clientConn.WriteMessage(messageType, data); err != nil {
-				log.Debugf("Failed to write to client: %v", err)
-				return
+			default:
+				messageType, data, err := chromeConn.ReadMessage()
+				if err != nil {
+					log.Debugf("Chrome connection closed: %v", err)
+					return
+				}
+				if err := clientConn.WriteMessage(messageType, data); err != nil {
+					log.Debugf("Failed to write to client: %v", err)
+					return
+				}
 			}
 		}
 	}()
@@ -169,8 +255,23 @@ func (s *cdpServer) listHandler(w http.ResponseWriter, r *http.Request) {
 
 // Start Chromium with GUI (non-headless) and CDP enabled
 func (s *cdpServer) startChrome() error {
+	// Try different possible Chrome executable names
+	chromeExes := []string{"google-chrome", "chromium-browser", "chromium"}
+	var chromeExe string
+	
+	for _, exe := range chromeExes {
+		if _, err := exec.LookPath(exe); err == nil {
+			chromeExe = exe
+			break
+		}
+	}
+	
+	if chromeExe == "" {
+		return fmt.Errorf("no Chrome/Chromium executable found. Please install: sudo apt install chromium-browser")
+	}
+	
 	cmd := exec.Command(
-		"chromium-browser",
+		chromeExe,
 		"--no-sandbox",
 		"--disable-dev-shm-usage",
 		"--remote-debugging-address=0.0.0.0",
@@ -183,7 +284,7 @@ func (s *cdpServer) startChrome() error {
 		"--display=:1",
 	)
 
-	log.Infof("Starting Chromium with GUI for CDP on internal port %s (visible via noVNC)", s.chromePort)
+	log.Infof("Starting %s with GUI for CDP on internal port %s (visible via noVNC)", chromeExe, s.chromePort)
 	return cmd.Start()
 }
 
@@ -227,17 +328,14 @@ func main() {
 
 	// Create CDP server
 	s := &cdpServer{
-		port:       cdpConfig.Port,  // External port (3007)
-		chromePort: "9222",          // Internal Chrome CDP port
+		port:       "3007",                    // External port (hardcoded for external access)
+		restAPIURL: "http://127.0.0.1:7000",  // REST API to query VM port mappings
 	}
 
-	// Start Chromium with GUI
-	err = s.startChrome()
-	if err != nil {
-		log.Fatalf("Failed to start Chromium: %v", err)
-	}
+	// NOTE: Chrome should be running inside guest VMs with dynamic port forwarding
+	log.Info("CDP server will proxy to Chrome running in guest VMs via dynamic port discovery")
 
-	// Give Chromium time to start
+	// Give guest VM time to start Chrome (if needed)
 	time.Sleep(2 * time.Second)
 
 	r := mux.NewRouter()

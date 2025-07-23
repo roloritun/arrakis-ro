@@ -1,0 +1,31 @@
+[Unit]
+Description=Arrakis Chrome with CDP
+After=arrakis-guestinit.service
+After=arrakis-vncserver.service
+Wants=arrakis-guestinit.service
+Wants=arrakis-vncserver.service
+
+[Service]
+Type=simple
+User=elara
+Group=elara
+Environment=DISPLAY=:1
+Environment=HOME=/home/elara
+WorkingDirectory=/home/elara
+ExecStart=/usr/local/bin/patchright-chrome \
+    --no-sandbox \
+    --disable-dev-shm-usage \
+    --remote-debugging-address=0.0.0.0 \
+    --remote-debugging-port=9222 \
+    --disable-extensions \
+    --disable-plugins \
+    --disable-web-security \
+    --disable-features=VizDisplayCompositor \
+    --start-maximized \
+    --display=:1 \
+    --user-data-dir=/home/elara/.chrome-data
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

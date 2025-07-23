@@ -122,6 +122,10 @@ RUN chmod +x /usr/local/bin/${CDPSERVER_BIN}
 COPY ${RESOURCES_DIR}/${CDPSERVER_BIN}.service /usr/lib/systemd/system/${CDPSERVER_BIN}.service
 RUN ln -s /usr/lib/systemd/system/${CDPSERVER_BIN}.service /etc/systemd/system/multi-user.target.wants/${CDPSERVER_BIN}.service
 
+# Add Chrome auto-start service
+COPY ${RESOURCES_DIR}/arrakis-chrome.service /usr/lib/systemd/system/arrakis-chrome.service
+RUN ln -s /usr/lib/systemd/system/arrakis-chrome.service /etc/systemd/system/multi-user.target.wants/arrakis-chrome.service
+
 # Prevent the renaming service that will change "eth0" to "ens*". If not done our init service
 # inside the guest has race conditions while configuring the network.
 RUN ln -s /dev/null /etc/systemd/network/99-default.link
