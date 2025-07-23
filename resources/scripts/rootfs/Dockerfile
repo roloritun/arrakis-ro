@@ -132,11 +132,21 @@ RUN curl -fsSL https://nodejs.org/dist/v18.20.4/node-v18.20.4-linux-x64.tar.xz |
     ln -s /opt/node-v18.20.4-linux-x64/bin/npx /usr/local/bin/npx
 
 # Install Patchright (better than Playwright for AI automation) and Chromium
-RUN pip3 install patchright && \
-    patchright install chromium && \
-    patchright install-deps chromium && \
-    # Create a wrapper script to find and run Patchright Chromium
-    echo '#!/bin/bash\nCHROME_PATH=$(find ~/.cache/patchright -name "chrome" -type f | head -1)\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
+# Install as root first, then for elara user
+RUN pip3 install patchright
+
+# Switch to elara user to install Patchright browsers
+USER elara
+WORKDIR /home/elara
+RUN patchright install chromium && \
+    patchright install-deps chromium
+
+# Switch back to root to continue setup
+USER root
+WORKDIR /
+
+# Create a wrapper script to find and run Patchright Chromium for elara user
+RUN echo '#!/bin/bash\nCHROME_PATH=$(find /home/elara/.cache/patchright -name "chrome" -type f | head -1)\nif [ -z "$CHROME_PATH" ]; then\n  echo "Chrome not found in /home/elara/.cache/patchright"\n  exit 1\nfi\nexec "$CHROME_PATH" "$@"' > /usr/local/bin/patchright-chrome && \
     chmod +x /usr/local/bin/patchright-chrome && \
     # Create symlink for CDP server compatibility
     ln -sf /usr/local/bin/patchright-chrome /usr/local/bin/chromium-browser
