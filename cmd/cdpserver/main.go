@@ -299,7 +299,7 @@ func main() {
 
 	// Create CDP server
 	s := &cdpServer{
-		port:       "3007",                    // External port (hardcoded for external access)
+		port:       cdpConfig.Port,            // Use configured port (from config.yaml)
 		restAPIURL: "http://127.0.0.1:7000",  // REST API to query VM port mappings
 	}
 

@@ -32,4 +32,4 @@ guestservices:
   novncserver:
     port: "6080"
   cdpserver:
-    port: "9222"
+    port: "2999"  # Just below the dynamic range (3000-6000)  # External CDP proxy port (different from guest 9222)
