@@ -131,7 +131,7 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 
 	// Connect directly to guest IP instead of using host port forwarding
 	// Since cloud-hypervisor isn't listening on host ports, we'll connect directly to guest
-	guestIP := vm.Network.GuestIP
+	guestIP := vm.IP
 	chromeURL := fmt.Sprintf("ws://%s:9223%s", guestIP, targetPath)
 	log.Infof("Proxying WebSocket directly to guest Chrome: %s", chromeURL)
 
@@ -248,9 +248,9 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vmName != "" {
-		log.Infof("Proxying request to VM '%s' directly at guest IP %s", vmName, vm.Network.GuestIP)
+		log.Infof("Proxying request to VM '%s' directly at guest IP %s", vmName, vm.IP)
 	} else {
-		log.Infof("Proxying request to first available VM directly at guest IP %s", vm.Network.GuestIP)
+		log.Infof("Proxying request to first available VM directly at guest IP %s", vm.IP)
 	}
 
 	// Handle WebSocket upgrade
@@ -260,7 +260,7 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle HTTP requests - connect directly to guest IP instead of host port
-	targetURL := fmt.Sprintf("http://%s:9223%s", vm.Network.GuestIP, r.URL.Path)
+	targetURL := fmt.Sprintf("http://%s:9223%s", vm.IP, r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
 		values := r.URL.Query()
