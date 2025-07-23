@@ -47,7 +47,8 @@ type VMResponse struct {
 }
 
 // discoverCDPPort queries the REST API to find the dynamic CDP port for any running VM
-func (s *cdpServer) discoverCDPPort() (string, error) {
+// If vmName is provided, it looks for that specific VM. Otherwise, returns the first available VM.
+func (s *cdpServer) discoverCDPPort(vmName string) (string, error) {
 	resp, err := http.Get(s.restAPIURL + "/v1/vms")
 	if err != nil {
 		return "", fmt.Errorf("failed to query VM API: %v", err)
@@ -68,10 +69,15 @@ func (s *cdpServer) discoverCDPPort() (string, error) {
 
 	log.Infof("Found %d VMs in response", len(vmResponse.VMs))
 
-	// Find the first running VM with CDP port forwarding
+	// Find the requested VM or first running VM with CDP port forwarding
 	for _, vm := range vmResponse.VMs {
 		log.Infof("Checking VM '%s' with status '%s'", vm.VMName, vm.Status)
 		if vm.Status == "RUNNING" {
+			// If specific VM requested, skip others
+			if vmName != "" && vm.VMName != vmName {
+				continue
+			}
+			
 			log.Infof("VM '%s' has %d port forwards", vm.VMName, len(vm.PortForwards))
 			for _, pf := range vm.PortForwards {
 				log.Debugf("Port forward: guest:%s -> host:%s (%s)", pf.GuestPort, pf.HostPort, pf.Description)
@@ -84,6 +90,9 @@ func (s *cdpServer) discoverCDPPort() (string, error) {
 		}
 	}
 
+	if vmName != "" {
+		return "", fmt.Errorf("VM '%s' not found or not running with CDP", vmName)
+	}
 	return "", fmt.Errorf("no running VM found with CDP port forwarding")
 }
 
@@ -94,16 +103,8 @@ var upgrader = websocket.Upgrader{
 }
 
 // WebSocket proxy handler for DevTools connections
-func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
+func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostPort string) {
 	log.Infof("WebSocket connection request: %s", r.URL.Path)
-	
-	// Discover the dynamic CDP port for the running VM
-	cdpPort, err := s.discoverCDPPort()
-	if err != nil {
-		log.Errorf("Failed to discover CDP port: %v", err)
-		http.Error(w, "No VM with CDP available", http.StatusServiceUnavailable)
-		return
-	}
 	
 	// Upgrade the HTTP connection to WebSocket
 	clientConn, err := upgrader.Upgrade(w, r, nil)
@@ -120,11 +121,16 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request) {
 	// Extract the target path - Chrome expects the same path structure
 	targetPath := r.URL.Path
 	if r.URL.RawQuery != "" {
-		targetPath += "?" + r.URL.RawQuery
+		// Remove vm parameter from forwarded query string
+		values := r.URL.Query()
+		values.Del("vm")
+		if len(values) > 0 {
+			targetPath += "?" + values.Encode()
+		}
 	}
 
 	// Connect to local Chrome DevTools WebSocket via dynamic port
-	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", cdpPort, targetPath)
+	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", hostPort, targetPath)
 	log.Infof("Proxying WebSocket to Chrome: %s", chromeURL)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
@@ -215,6 +221,90 @@ func (s *cdpServer) healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status": "healthy", "service": "cdp"}`)
+}
+
+// proxyHandler handles all CDP requests and proxies them to the appropriate VM
+func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract VM name from URL path if present
+	var vmName string
+	vars := mux.Vars(r)
+	if name, exists := vars["vmName"]; exists {
+		vmName = name
+	}
+	
+	// Also check for VM in query parameters
+	if vmQuery := r.URL.Query().Get("vm"); vmQuery != "" {
+		vmName = vmQuery
+	}
+
+	// Discover the CDP port for the VM
+	hostPort, err := s.discoverCDPPort(vmName)
+	if err != nil {
+		log.Errorf("Failed to discover CDP port: %v", err)
+		http.Error(w, fmt.Sprintf("503 Service Unavailable - %v", err), http.StatusServiceUnavailable)
+		return
+	}
+
+	if vmName != "" {
+		log.Infof("Proxying request to VM '%s' on host port %s", vmName, hostPort)
+	} else {
+		log.Infof("Proxying request to first available VM on host port %s", hostPort)
+	}
+
+	// Handle WebSocket upgrade
+	if websocket.IsWebSocketUpgrade(r) {
+		s.websocketProxy(w, r, hostPort)
+		return
+	}
+
+	// Handle HTTP requests
+	targetURL := fmt.Sprintf("http://localhost:%s%s", hostPort, r.URL.Path)
+	if r.URL.RawQuery != "" {
+		// Remove vm parameter from forwarded query string
+		values := r.URL.Query()
+		values.Del("vm")
+		if len(values) > 0 {
+			targetURL += "?" + values.Encode()
+		}
+	}
+
+	// Create the proxy request
+	proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+	if err != nil {
+		log.Errorf("Failed to create proxy request: %v", err)
+		http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	// Copy headers
+	for name, values := range r.Header {
+		for _, value := range values {
+			proxyReq.Header.Add(name, value)
+		}
+	}
+
+	// Perform the request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(proxyReq)
+	if err != nil {
+		log.Errorf("Failed to proxy request to %s: %v", targetURL, err)
+		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response headers
+	for name, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(name, value)
+		}
+	}
+
+	// Copy status code and body
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Errorf("Failed to copy response body: %v", err)
+	}
 }
 
 // CDP endpoints proxy
@@ -312,16 +402,20 @@ func main() {
 	r := mux.NewRouter()
 	r.StrictSlash(true) // Automatically handle trailing slashes
 
-	// Register CDP routes
+	// Register CDP routes with VM selection support
 	r.HandleFunc("/health", s.healthCheck).Methods("GET")
-	r.HandleFunc("/json/version", s.versionHandler).Methods("GET")
-	r.HandleFunc("/json", s.listHandler).Methods("GET")
-	r.HandleFunc("/json/list", s.listHandler).Methods("GET")
-
-	// Register WebSocket routes for DevTools (order matters - more specific first)
-	r.HandleFunc("/devtools/browser/", s.websocketProxy)
-	r.HandleFunc("/devtools/page/{pageId}", s.websocketProxy)
-	r.PathPrefix("/devtools/").HandlerFunc(s.websocketProxy) // Catch-all for other DevTools WebSocket endpoints
+	
+	// VM-specific routes (e.g., /vm/testsandbox/json/version)
+	r.HandleFunc("/vm/{vmName}/json/version", s.proxyHandler).Methods("GET")
+	r.HandleFunc("/vm/{vmName}/json", s.proxyHandler).Methods("GET")
+	r.HandleFunc("/vm/{vmName}/json/list", s.proxyHandler).Methods("GET")
+	r.PathPrefix("/vm/{vmName}/devtools/").HandlerFunc(s.proxyHandler)
+	
+	// Default routes (first available VM)
+	r.HandleFunc("/json/version", s.proxyHandler).Methods("GET")
+	r.HandleFunc("/json", s.proxyHandler).Methods("GET")
+	r.HandleFunc("/json/list", s.proxyHandler).Methods("GET")
+	r.PathPrefix("/devtools/").HandlerFunc(s.proxyHandler)
 
 	// Start HTTP server
 	srv := &http.Server{
