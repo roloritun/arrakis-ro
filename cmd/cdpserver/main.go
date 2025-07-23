@@ -146,6 +146,7 @@ func main() {
 	time.Sleep(2 * time.Second)
 
 	r := mux.NewRouter()
+	r.StrictSlash(true) // Automatically handle trailing slashes
 
 	// Register CDP routes
 	r.HandleFunc("/health", s.healthCheck).Methods("GET")
