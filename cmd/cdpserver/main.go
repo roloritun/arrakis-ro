@@ -48,23 +48,23 @@ type VMResponse struct {
 
 // discoverCDPPort queries the REST API to find the dynamic CDP port for any running VM
 // If vmName is provided, it looks for that specific VM. Otherwise, returns the first available VM.
-func (s *cdpServer) discoverCDPPort(vmName string) (string, error) {
+func (s *cdpServer) discoverCDPPort(vmName string) (string, VM, error) {
 	resp, err := http.Get(s.restAPIURL + "/v1/vms")
 	if err != nil {
-		return "", fmt.Errorf("failed to query VM API: %v", err)
+		return "", VM{}, fmt.Errorf("failed to query VM API: %v", err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to read response: %v", err)
+		return "", VM{}, fmt.Errorf("failed to read response: %v", err)
 	}
 
 	log.Debugf("VM API response: %s", string(body))
 
 	var vmResponse VMResponse
 	if err := json.Unmarshal(body, &vmResponse); err != nil {
-		return "", fmt.Errorf("failed to parse VM response: %v", err)
+		return "", VM{}, fmt.Errorf("failed to parse VM response: %v", err)
 	}
 
 	log.Infof("Found %d VMs in response", len(vmResponse.VMs))
@@ -84,16 +84,16 @@ func (s *cdpServer) discoverCDPPort(vmName string) (string, error) {
 				if pf.GuestPort == "9223" && pf.Description == "cdp" {
 					log.Infof("Found running VM '%s' with CDP port forwarded from guest:%s to host:%s", 
 						vm.VMName, pf.GuestPort, pf.HostPort)
-					return pf.HostPort, nil
+					return pf.HostPort, vm, nil
 				}
 			}
 		}
 	}
 
 	if vmName != "" {
-		return "", fmt.Errorf("VM '%s' not found or not running with CDP", vmName)
+		return "", VM{}, fmt.Errorf("VM '%s' not found or not running with CDP", vmName)
 	}
-	return "", fmt.Errorf("no running VM found with CDP port forwarding")
+	return "", VM{}, fmt.Errorf("no running VM found with CDP port forwarding")
 }
 
 var upgrader = websocket.Upgrader{
@@ -103,7 +103,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // WebSocket proxy handler for DevTools connections
-func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostPort string, vm VMInfo) {
+func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostPort string, vm VM) {
 	log.Infof("WebSocket connection request: %s", r.URL.Path)
 	
 	// Upgrade the HTTP connection to WebSocket
@@ -240,7 +240,7 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Discover the CDP port for the VM
-	hostPort, err := s.discoverCDPPort(vmName)
+	hostPort, vm, err := s.discoverCDPPort(vmName)
 	if err != nil {
 		log.Errorf("Failed to discover CDP port: %v", err)
 		http.Error(w, fmt.Sprintf("503 Service Unavailable - %v", err), http.StatusServiceUnavailable)
