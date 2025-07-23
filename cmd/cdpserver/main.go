@@ -146,16 +146,13 @@ func main() {
 	time.Sleep(2 * time.Second)
 
 	r := mux.NewRouter()
+	r.StrictSlash(true) // Automatically handle trailing slashes
 
-	// Register CDP routes (handle both with and without trailing slashes)
+	// Register CDP routes
 	r.HandleFunc("/health", s.healthCheck).Methods("GET")
-	r.HandleFunc("/health/", s.healthCheck).Methods("GET")
 	r.HandleFunc("/json/version", s.versionHandler).Methods("GET")
-	r.HandleFunc("/json/version/", s.versionHandler).Methods("GET")
 	r.HandleFunc("/json", s.listHandler).Methods("GET")
-	r.HandleFunc("/json/", s.listHandler).Methods("GET")
 	r.HandleFunc("/json/list", s.listHandler).Methods("GET")
-	r.HandleFunc("/json/list/", s.listHandler).Methods("GET")
 
 	// Start HTTP server
 	srv := &http.Server{

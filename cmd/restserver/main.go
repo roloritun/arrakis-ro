@@ -434,8 +434,9 @@ func main() {
 	// Create REST server
 	s := &restServer{vmServer: vmServer}
 	r := mux.NewRouter()
+	r.StrictSlash(true) // Automatically handle trailing slashes
 
-	// Register routes (both with and without trailing slashes for health endpoint)
+	// Register routes
 	r.HandleFunc("/"+API_VERSION+"/vms", s.startVM).Methods("POST")
 	r.HandleFunc("/"+API_VERSION+"/vms/{name}", s.updateVMState).Methods("PATCH")
 	r.HandleFunc("/"+API_VERSION+"/vms/{name}", s.destroyVM).Methods("DELETE")
@@ -447,7 +448,6 @@ func main() {
 	r.HandleFunc("/"+API_VERSION+"/vms/{name}/files", s.vmFileUpload).Methods("POST")
 	r.HandleFunc("/"+API_VERSION+"/vms/{name}/files", s.vmFileDownload).Methods("GET")
 	r.HandleFunc("/"+API_VERSION+"/health", s.healthCheck).Methods("GET")
-	r.HandleFunc("/"+API_VERSION+"/health/", s.healthCheck).Methods("GET")
 
 	// Start HTTP server - Force IPv4 binding to avoid IPv6-only issues
 	addr := serverConfig.Host + ":" + serverConfig.Port
