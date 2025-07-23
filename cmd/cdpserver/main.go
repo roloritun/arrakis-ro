@@ -253,41 +253,6 @@ func (s *cdpServer) listHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// Start Chromium with GUI (non-headless) and CDP enabled
-func (s *cdpServer) startChrome() error {
-	// Try different possible Chrome executable names
-	chromeExes := []string{"google-chrome", "chromium-browser", "chromium"}
-	var chromeExe string
-	
-	for _, exe := range chromeExes {
-		if _, err := exec.LookPath(exe); err == nil {
-			chromeExe = exe
-			break
-		}
-	}
-	
-	if chromeExe == "" {
-		return fmt.Errorf("no Chrome/Chromium executable found. Please install: sudo apt install chromium-browser")
-	}
-	
-	cmd := exec.Command(
-		chromeExe,
-		"--no-sandbox",
-		"--disable-dev-shm-usage",
-		"--remote-debugging-address=0.0.0.0",
-		fmt.Sprintf("--remote-debugging-port=%s", s.chromePort),
-		"--disable-extensions",
-		"--disable-plugins",
-		"--disable-web-security",
-		"--disable-features=VizDisplayCompositor",
-		"--start-maximized",
-		"--display=:1",
-	)
-
-	log.Infof("Starting %s with GUI for CDP on internal port %s (visible via noVNC)", chromeExe, s.chromePort)
-	return cmd.Start()
-}
-
 func main() {
 	var cdpConfig *config.CDPServerConfig
 	var configFile string
