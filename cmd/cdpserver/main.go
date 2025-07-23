@@ -103,7 +103,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // WebSocket proxy handler for DevTools connections
-func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostPort string) {
+func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostPort string, vm VMInfo) {
 	log.Infof("WebSocket connection request: %s", r.URL.Path)
 	
 	// Upgrade the HTTP connection to WebSocket
@@ -129,9 +129,11 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 		}
 	}
 
-	// Connect to local Chrome DevTools WebSocket via dynamic port
-	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", hostPort, targetPath)
-	log.Infof("Proxying WebSocket to Chrome: %s", chromeURL)
+	// Connect directly to guest IP instead of using host port forwarding
+	// Since cloud-hypervisor isn't listening on host ports, we'll connect directly to guest
+	guestIP := vm.Network.GuestIP
+	chromeURL := fmt.Sprintf("ws://%s:9223%s", guestIP, targetPath)
+	log.Infof("Proxying WebSocket directly to guest Chrome: %s", chromeURL)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
 	if err != nil {
@@ -246,19 +248,19 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vmName != "" {
-		log.Infof("Proxying request to VM '%s' on host port %s", vmName, hostPort)
+		log.Infof("Proxying request to VM '%s' directly at guest IP %s", vmName, vm.Network.GuestIP)
 	} else {
-		log.Infof("Proxying request to first available VM on host port %s", hostPort)
+		log.Infof("Proxying request to first available VM directly at guest IP %s", vm.Network.GuestIP)
 	}
 
 	// Handle WebSocket upgrade
 	if websocket.IsWebSocketUpgrade(r) {
-		s.websocketProxy(w, r, hostPort)
+		s.websocketProxy(w, r, hostPort, vm)
 		return
 	}
 
-	// Handle HTTP requests
-	targetURL := fmt.Sprintf("http://localhost:%s%s", hostPort, r.URL.Path)
+	// Handle HTTP requests - connect directly to guest IP instead of host port
+	targetURL := fmt.Sprintf("http://%s:9223%s", vm.Network.GuestIP, r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
 		values := r.URL.Query()
