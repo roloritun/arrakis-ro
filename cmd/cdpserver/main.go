@@ -285,22 +285,46 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Execute curl inside the guest VM
+	log.Infof("Executing command in VM %s: %s", targetVMName, curlCommand)
 	cmd := exec.Command("./out/arrakis-client", "run", "-n", targetVMName, "-c", curlCommand)
 	output, err := cmd.Output()
 	if err != nil {
 		log.Errorf("Failed to execute command in VM %s: %v", targetVMName, err)
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			log.Errorf("Command stderr: %s", string(exitErr.Stderr))
+		}
 		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
 
+	log.Infof("Raw output from arrakis-client: %q", string(output))
+
 	// Parse the output to extract just the JSON (skip the INFO line)
 	lines := strings.Split(string(output), "\n")
 	var jsonOutput string
-	for _, line := range lines {
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		log.Debugf("Line %d: %q", i, line)
 		if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
 			jsonOutput = line
 			break
 		}
+	}
+
+	if jsonOutput == "" {
+		log.Errorf("No JSON found in output: %q", string(output))
+		http.Error(w, "502 Bad Gateway - No JSON response", http.StatusBadGateway)
+		return
+	}
+
+	log.Infof("Extracted JSON: %q", jsonOutput)
+
+	// Validate JSON before returning
+	var testJSON interface{}
+	if err := json.Unmarshal([]byte(jsonOutput), &testJSON); err != nil {
+		log.Errorf("Invalid JSON extracted: %v", err)
+		http.Error(w, "502 Bad Gateway - Invalid JSON", http.StatusBadGateway)
+		return
 	}
 
 	// Return the JSON response
