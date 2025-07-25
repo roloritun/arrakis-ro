@@ -4,8 +4,8 @@ After=arrakis-guestinit.service
 
 [Service]
 Type=simple
-User=elara
-WorkingDirectory=/home/elara
+User=rahmanoloritun
+WorkingDirectory=/home/rahmanoloritun
 ExecStart=/usr/local/bin/arrakis-cdpserver --config /etc/config.yaml
 Restart=on-failure
 RestartSec=5
