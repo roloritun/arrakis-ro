@@ -213,7 +213,11 @@ func bridgeExists(bridgeName string) (bool, error) {
 	bridges := strings.Split(string(output), "\n")
 
 	for _, bridge := range bridges {
-		if strings.Contains(bridge, bridgeName+":") {
+		// Use regex to match exact bridge name followed by colon
+		// This prevents "br0" from matching "virbr0"
+		bridgePattern := fmt.Sprintf(`\b\d+:\s+%s:`, bridgeName)
+		matched, _ := regexp.MatchString(bridgePattern, bridge)
+		if matched {
 			return true, nil
 		}
 	}

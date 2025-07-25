@@ -1,5 +1,4 @@
 OUT_DIR := out
-GO := /usr/local/go/bin/go
 API_CLIENT_DIR := out/gen/serverapi
 API_CLIENT_GO_PACKAGE_NAME := serverapi
 CHV_API_DIR := out/gen/chvapi
@@ -46,33 +45,33 @@ ${OUT_DIR}/arrakis-chvapi.stamp: api/chv-api.yaml
 
 restserver: serverapi chvapi
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${RESTSERVER_BIN} ./cmd/restserver
+	CGO_ENABLED=0 go build -o ${RESTSERVER_BIN} ./cmd/restserver
 
 client: serverapi
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${CLIENT_BIN} ./cmd/client
+	CGO_ENABLED=0 go build -o ${CLIENT_BIN} ./cmd/client
 
 # Build the guest init binary explicitly statically if "os" or "net" are used by
 # using the CGO_ENABLED=0 flag.
 guestinit:
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${GUESTINIT_BIN} ./cmd/guestinit
+	CGO_ENABLED=0 go build -o ${GUESTINIT_BIN} ./cmd/guestinit
 
 rootfsmaker:
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${ROOTFSMAKER_BIN} ./cmd/rootfsmaker
+	CGO_ENABLED=0 go build -o ${ROOTFSMAKER_BIN} ./cmd/rootfsmaker
 
 cmdserver:
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${CMDSERVER_BIN} ./cmd/cmdserver
+	CGO_ENABLED=0 go build -o ${CMDSERVER_BIN} ./cmd/cmdserver
 
 novncserver:
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${NOVNCSERVER_BIN} ./cmd/novncserver
+	CGO_ENABLED=0 go build -o ${NOVNCSERVER_BIN} ./cmd/novncserver
 
 cdpserver:
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${CDPSERVER_BIN} ./cmd/cdpserver
+	CGO_ENABLED=0 go build -o ${CDPSERVER_BIN} ./cmd/cdpserver
 
 guestrootfs: rootfsmaker initramfs cmdserver novncserver cdpserver vsockserver guestinit
 	mkdir -p ${OUT_DIR}
@@ -82,11 +81,11 @@ guest: guestinit rootfsmaker cmdserver novncserver cdpserver guestrootfs
 
 vsockclient:
 	mkdir -p ${OUT_DIR}
-	${GO} build -o ${VSOCKCLIENT_BIN} ./cmd/vsockclient
+	go build -o ${VSOCKCLIENT_BIN} ./cmd/vsockclient
 
 vsockserver:
 	mkdir -p ${OUT_DIR}
-	CGO_ENABLED=0 ${GO} build -o ${VSOCKSERVER_BIN} ./cmd/vsockserver
+	CGO_ENABLED=0 go build -o ${VSOCKSERVER_BIN} ./cmd/vsockserver
 
 initramfs: ${OUT_DIR}/initramfs.stamp
 ${OUT_DIR}/initramfs.stamp: ${INITRAMFS_SRC_DIR}/create-initramfs.sh

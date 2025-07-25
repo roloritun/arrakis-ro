@@ -14,15 +14,53 @@ Environment=HOME=/home/elara
 WorkingDirectory=/home/elara
 ExecStart=/usr/local/bin/patchright-chrome \
     --no-sandbox \
+    --test-type \
+    --disable-setuid-sandbox \
     --disable-dev-shm-usage \
-    --remote-debugging-port=9222 \
+    --disable-gpu \
+    --use-gl=swiftshader \
+    --window-size=1920,1080 \
+    --disable-dbus \
+    --disable-background-timer-throttling \
+    --disable-backgrounding-occluded-windows \
+    --disable-renderer-backgrounding \
+    --disable-background-networking \
+    --disable-ipc-flooding-protection \
+    --disable-infobars \
+    --disable-notifications \
+    --disable-translate \
     --disable-extensions \
+    --disable-default-apps \
     --disable-plugins \
+    --disable-plugins-discovery \
+    --disable-component-extensions-with-background-pages \
+    --no-first-run \
+    --no-default-browser-check \
+    --disable-popup-blocking \
+    --disable-prompt-on-repost \
+    --disable-hang-monitor \
+    --disable-sync \
+    --disable-background-mode \
+    --disable-client-side-phishing-detection \
+    --disable-component-update \
+    --safebrowsing-disable-auto-update \
+    --metrics-recording-only \
+    --disable-logging \
+    --disable-save-password-bubble \
+    --disable-session-crashed-bubble \
+    --disable-restore-session-state \
+    --password-store=basic \
+    --use-mock-keychain \
+    --disable-features=TranslateUI,VizDisplayCompositor,AutomationControlled,PasswordManager,FormControls \
+    --disable-breakpad \
+    --disable-web-resources \
     --disable-web-security \
-    --disable-features=VizDisplayCompositor \
+    --remote-debugging-port=9223 \
+    --remote-debugging-address=0.0.0.0 \
     --start-maximized \
     --display=:1 \
-    --user-data-dir=/home/elara/.chrome-data
+    --user-data-dir=/home/elara/.chrome-data \
+    --enable-automation
 Restart=always
 RestartSec=5
 
