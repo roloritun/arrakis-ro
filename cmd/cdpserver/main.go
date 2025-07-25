@@ -131,15 +131,10 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 		}
 	}
 
-	// Connect directly to guest IP instead of using host port forwarding
-	// Since cloud-hypervisor isn't listening on host ports, we'll connect directly to guest
-	guestIP := vm.IP
-	// Remove CIDR notation if present (e.g., "10.20.1.2/24" -> "10.20.1.2")
-	if strings.Contains(guestIP, "/") {
-		guestIP = strings.Split(guestIP, "/")[0]
-	}
-	chromeURL := fmt.Sprintf("ws://%s:9223%s", guestIP, targetPath)
-	log.Infof("Proxying WebSocket directly to guest Chrome: %s", chromeURL)
+	// Connect to Chrome via the host port forwarding (not directly to guest IP)
+	// Use localhost and the mapped host port for the WebSocket connection
+	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", hostPort, targetPath)
+	log.Infof("Proxying WebSocket via host port forwarding: %s", chromeURL)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
 	if err != nil {
@@ -334,6 +329,19 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "502 Bad Gateway - Invalid JSON", http.StatusBadGateway)
 		return
 	}
+
+	// Fix WebSocket URLs in the JSON to point to our CDP server instead of Chrome directly
+	// This allows external clients to connect via our proxy
+	hostURL := fmt.Sprintf("%s:%s", r.Host, s.port)
+	if r.Host == "" {
+		hostURL = fmt.Sprintf("localhost:%s", s.port)
+	}
+	
+	// Replace Chrome's internal WebSocket URLs with our proxy URLs
+	jsonOutput = strings.ReplaceAll(jsonOutput, "ws://127.0.0.1:9223/devtools/", fmt.Sprintf("ws://%s/devtools/", hostURL))
+	jsonOutput = strings.ReplaceAll(jsonOutput, "\"ws=127.0.0.1:9223/devtools/", fmt.Sprintf("\"ws=%s/devtools/", hostURL))
+	
+	log.Infof("Fixed JSON with proxy URLs: %q", jsonOutput)
 
 	// Return the JSON response
 	w.Header().Set("Content-Type", "application/json")
