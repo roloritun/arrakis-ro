@@ -335,6 +335,23 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Fix WebSocket URLs in the JSON to point to our CDP server for external access
+	// Replace Chrome's internal URLs with our proxy URLs
+	hostURL := r.Host
+	if hostURL == "" {
+		// If no Host header, use localhost with our CDP server port
+		hostURL = fmt.Sprintf("localhost:%s", s.port)
+	}
+	
+	// Replace Chrome's WebSocket URLs with our CDP server URLs
+	// Handle both /devtools/ and /devtools/browser/ patterns
+	jsonOutput = strings.ReplaceAll(jsonOutput, "ws://127.0.0.1:9223/devtools/", fmt.Sprintf("ws://%s/devtools/", hostURL))
+	jsonOutput = strings.ReplaceAll(jsonOutput, "\"ws=127.0.0.1:9223/devtools/", fmt.Sprintf("\"ws=%s/devtools/", hostURL))
+	// Also replace the full 127.0.0.1:9223 pattern for any WebSocket URLs
+	jsonOutput = strings.ReplaceAll(jsonOutput, "ws://127.0.0.1:9223", fmt.Sprintf("ws://%s", hostURL))
+	
+	log.Infof("Rewritten JSON for external access: %q", jsonOutput)
+
 	// Return the JSON response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
