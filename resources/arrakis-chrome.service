@@ -55,7 +55,7 @@ ExecStart=/usr/local/bin/patchright-chrome \
     --disable-breakpad \
     --disable-web-resources \
     --disable-web-security \
-    --remote-debugging-port=9223 \
+    --remote-debugging-port=9222 \
     --remote-debugging-address=0.0.0.0 \
     --start-maximized \
     --display=:1 \

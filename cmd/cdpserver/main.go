@@ -259,7 +259,7 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle HTTP requests - Use port forward for consistent routing
-	// This replaces the arrakis-client approach with direct port forward usage
+	// The forwarder service makes Chrome's 9222 available on 9223 with 0.0.0.0 binding
 	targetURL := fmt.Sprintf("http://127.0.0.1:%s%s", hostPort, r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
@@ -320,14 +320,27 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	// Get the response as string and rewrite URLs
 	jsonOutput := string(body)
 	
+	// Find the forwarded port for URL rewriting
+	// Chrome runs on 9222, but forwarder makes it accessible on 9223
+	// Chrome's JSON responses will contain the forwarded port (9223) in WebSocket URLs
+	forwardedPort := "9223"
+	for _, pf := range vm.PortForwards {
+		if pf.Description == "cdp" {
+			forwardedPort = pf.GuestPort // This will be 9223 (the forwarded port)
+			break
+		}
+	}
+	
 	// Replace Chrome's WebSocket URLs with our CDP server URLs
-	// Handle both /devtools/ and /devtools/browser/ patterns
-	jsonOutput = strings.ReplaceAll(jsonOutput, "ws://127.0.0.1:9223/devtools/", fmt.Sprintf("ws://%s/devtools/", hostURL))
-	jsonOutput = strings.ReplaceAll(jsonOutput, "\"ws=127.0.0.1:9223/devtools/", fmt.Sprintf("\"ws=%s/devtools/", hostURL))
-	// Also replace the full 127.0.0.1:9223 pattern for any WebSocket URLs
-	jsonOutput = strings.ReplaceAll(jsonOutput, "ws://127.0.0.1:9223", fmt.Sprintf("ws://%s", hostURL))
+	// Handle both /devtools/ and /devtools/browser/ patterns dynamically
+	// Chrome responses will contain URLs with the forwarded port (9223), not the original port (9222)
+	chromePattern := fmt.Sprintf("127.0.0.1:%s", forwardedPort)
+	jsonOutput = strings.ReplaceAll(jsonOutput, fmt.Sprintf("ws://%s/devtools/", chromePattern), fmt.Sprintf("ws://%s/devtools/", hostURL))
+	jsonOutput = strings.ReplaceAll(jsonOutput, fmt.Sprintf("\"ws=%s/devtools/", chromePattern), fmt.Sprintf("\"ws=%s/devtools/", hostURL))
+	// Also replace the full pattern for any WebSocket URLs
+	jsonOutput = strings.ReplaceAll(jsonOutput, fmt.Sprintf("ws://%s", chromePattern), fmt.Sprintf("ws://%s", hostURL))
 	// Fix DevTools frontend URLs in query parameters
-	jsonOutput = strings.ReplaceAll(jsonOutput, "?ws=127.0.0.1:9223/devtools/", fmt.Sprintf("?ws=%s/devtools/", hostURL))
+	jsonOutput = strings.ReplaceAll(jsonOutput, fmt.Sprintf("?ws=%s/devtools/", chromePattern), fmt.Sprintf("?ws=%s/devtools/", hostURL))
 	
 	log.Infof("Rewritten JSON for external access: %q", jsonOutput)
 
