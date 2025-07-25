@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -151,6 +152,7 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 
 	// Proxy messages in both directions
 	done := make(chan struct{})
+	var doneOnce sync.Once // Ensure channel is closed only once
 
 	// Client -> Chrome
 	go func() {
@@ -158,26 +160,17 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 			if r := recover(); r != nil {
 				log.Errorf("Panic in client->chrome proxy: %v", r)
 			}
-			select {
-			case <-done:
-			default:
-				close(done)
-			}
+			doneOnce.Do(func() { close(done) })
 		}()
 		for {
-			select {
-			case <-done:
+			messageType, data, err := clientConn.ReadMessage()
+			if err != nil {
+				log.Debugf("Client connection closed: %v", err)
 				return
-			default:
-				messageType, data, err := clientConn.ReadMessage()
-				if err != nil {
-					log.Debugf("Client connection closed: %v", err)
-					return
-				}
-				if err := chromeConn.WriteMessage(messageType, data); err != nil {
-					log.Debugf("Failed to write to Chrome: %v", err)
-					return
-				}
+			}
+			if err := chromeConn.WriteMessage(messageType, data); err != nil {
+				log.Debugf("Failed to write to Chrome: %v", err)
+				return
 			}
 		}
 	}()
@@ -188,26 +181,17 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 			if r := recover(); r != nil {
 				log.Errorf("Panic in chrome->client proxy: %v", r)
 			}
-			select {
-			case <-done:
-			default:
-				close(done)
-			}
+			doneOnce.Do(func() { close(done) })
 		}()
 		for {
-			select {
-			case <-done:
+			messageType, data, err := chromeConn.ReadMessage()
+			if err != nil {
+				log.Debugf("Chrome connection closed: %v", err)
 				return
-			default:
-				messageType, data, err := chromeConn.ReadMessage()
-				if err != nil {
-					log.Debugf("Chrome connection closed: %v", err)
-					return
-				}
-				if err := clientConn.WriteMessage(messageType, data); err != nil {
-					log.Debugf("Failed to write to client: %v", err)
-					return
-				}
+			}
+			if err := clientConn.WriteMessage(messageType, data); err != nil {
+				log.Debugf("Failed to write to client: %v", err)
+				return
 			}
 		}
 	}()
