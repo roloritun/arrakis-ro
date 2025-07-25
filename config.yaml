@@ -32,4 +32,4 @@ guestservices:
   novncserver:
     port: "6080"
   cdpserver:
-    port: "3007"  # Use the already-forwarded port
+    port: "2999"  # Different from VM port forwards
