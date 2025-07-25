@@ -5,7 +5,7 @@ After=arrakis-guestinit.service
 [Service]
 Type=simple
 User=rahmanoloritun
-WorkingDirectory=/home/rahmanoloritun
+WorkingDirectory=/home/rahmanoloritun/arrakis-ro
 ExecStart=/usr/local/bin/arrakis-cdpserver --config /home/rahmanoloritun/arrakis-ro/config.yaml
 Restart=on-failure
 RestartSec=5
