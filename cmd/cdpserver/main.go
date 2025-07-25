@@ -349,6 +349,8 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	jsonOutput = strings.ReplaceAll(jsonOutput, "\"ws=127.0.0.1:9223/devtools/", fmt.Sprintf("\"ws=%s/devtools/", hostURL))
 	// Also replace the full 127.0.0.1:9223 pattern for any WebSocket URLs
 	jsonOutput = strings.ReplaceAll(jsonOutput, "ws://127.0.0.1:9223", fmt.Sprintf("ws://%s", hostURL))
+	// Fix DevTools frontend URLs in query parameters
+	jsonOutput = strings.ReplaceAll(jsonOutput, "?ws=127.0.0.1:9223/devtools/", fmt.Sprintf("?ws=%s/devtools/", hostURL))
 	
 	log.Infof("Rewritten JSON for external access: %q", jsonOutput)
 
