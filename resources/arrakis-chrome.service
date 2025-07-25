@@ -51,7 +51,7 @@ ExecStart=/usr/local/bin/patchright-chrome \
     --disable-restore-session-state \
     --password-store=basic \
     --use-mock-keychain \
-    --disable-features=TranslateUI,VizDisplayCompositor,AutomationControlled,PasswordManager,FormControls \
+    --disable-features=TranslateUI,VizDisplayCompositor,PasswordManager,FormControls \
     --disable-breakpad \
     --disable-web-resources \
     --disable-web-security \
@@ -60,7 +60,11 @@ ExecStart=/usr/local/bin/patchright-chrome \
     --start-maximized \
     --display=:1 \
     --user-data-dir=/home/elara/.chrome-data \
-    --enable-automation
+    --enable-automation \
+    --disable-blink-features=AutomationControlled \
+    --exclude-switches=enable-automation \
+    --disable-extensions-file-access-check \
+    --disable-plugins-discovery
 Restart=always
 RestartSec=5
 
