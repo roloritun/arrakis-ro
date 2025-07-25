@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -270,54 +271,42 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle HTTP requests - connect directly to guest IP instead of host port
-	targetURL := fmt.Sprintf("http://%s:9223%s", guestIP, r.URL.Path)
+	// Handle HTTP requests - Chrome is only listening on 127.0.0.1 inside guest
+	// We need to execute the request from within the guest VM using arrakis-client
+	vmName := vm.VMName
+	curlCommand := fmt.Sprintf("curl -s http://127.0.0.1:9223%s", r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
 		values := r.URL.Query()
 		values.Del("vm")
 		if len(values) > 0 {
-			targetURL += "?" + values.Encode()
+			curlCommand += "?" + values.Encode()
 		}
 	}
-
-	// Create the proxy request
-	proxyReq, err := http.NewRequest(r.Method, targetURL, r.Body)
+	
+	// Execute curl inside the guest VM
+	cmd := exec.Command("./out/arrakis-client", "run", "-n", vmName, "-c", curlCommand)
+	output, err := cmd.Output()
 	if err != nil {
-		log.Errorf("Failed to create proxy request: %v", err)
-		http.Error(w, "500 Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	// Copy headers
-	for name, values := range r.Header {
-		for _, value := range values {
-			proxyReq.Header.Add(name, value)
-		}
-	}
-
-	// Perform the request
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(proxyReq)
-	if err != nil {
-		log.Errorf("Failed to proxy request to %s: %v", targetURL, err)
+		log.Errorf("Failed to execute command in VM %s: %v", vmName, err)
 		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
 
-	// Copy response headers
-	for name, values := range resp.Header {
-		for _, value := range values {
-			w.Header().Add(name, value)
+	// Parse the output to extract just the JSON (skip the INFO line)
+	lines := strings.Split(string(output), "\n")
+	var jsonOutput string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
+			jsonOutput = line
+			break
 		}
 	}
 
-	// Copy status code and body
-	w.WriteHeader(resp.StatusCode)
-	if _, err := io.Copy(w, resp.Body); err != nil {
-		log.Errorf("Failed to copy response body: %v", err)
-	}
+	// Return the JSON response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(jsonOutput))
 }
 
 // CDP endpoints proxy
