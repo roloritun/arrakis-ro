@@ -273,7 +273,7 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Handle HTTP requests - Chrome is only listening on 127.0.0.1 inside guest
 	// We need to execute the request from within the guest VM using arrakis-client
-	vmName := vm.VMName
+	targetVMName := vm.VMName
 	curlCommand := fmt.Sprintf("curl -s http://127.0.0.1:9223%s", r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
@@ -285,10 +285,10 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Execute curl inside the guest VM
-	cmd := exec.Command("./out/arrakis-client", "run", "-n", vmName, "-c", curlCommand)
+	cmd := exec.Command("./out/arrakis-client", "run", "-n", targetVMName, "-c", curlCommand)
 	output, err := cmd.Output()
 	if err != nil {
-		log.Errorf("Failed to execute command in VM %s: %v", vmName, err)
+		log.Errorf("Failed to execute command in VM %s: %v", targetVMName, err)
 		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
