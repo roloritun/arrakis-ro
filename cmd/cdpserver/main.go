@@ -131,15 +131,9 @@ func (s *cdpServer) websocketProxy(w http.ResponseWriter, r *http.Request, hostP
 		}
 	}
 
-	// Connect directly to guest IP instead of using host port forwarding
-	// Since cloud-hypervisor isn't listening on host ports, we'll connect directly to guest
-	guestIP := vm.IP
-	// Remove CIDR notation if present (e.g., "10.20.1.2/24" -> "10.20.1.2")
-	if strings.Contains(guestIP, "/") {
-		guestIP = strings.Split(guestIP, "/")[0]
-	}
-	chromeURL := fmt.Sprintf("ws://%s:9223%s", guestIP, targetPath)
-	log.Infof("Proxying WebSocket directly to guest Chrome: %s", chromeURL)
+	// Use the discovered host port forward for consistent routing
+	chromeURL := fmt.Sprintf("ws://127.0.0.1:%s%s", hostPort, targetPath)
+	log.Infof("Proxying WebSocket via port forward: %s (VM: %s)", chromeURL, vm.VMName)
 
 	chromeConn, _, err := websocket.DefaultDialer.Dial(chromeURL, nil)
 	if err != nil {
@@ -253,16 +247,10 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse guest IP and remove CIDR notation if present
-	guestIP := vm.IP
-	if strings.Contains(guestIP, "/") {
-		guestIP = strings.Split(guestIP, "/")[0]
-	}
-
 	if vmName != "" {
-		log.Infof("Proxying request to VM '%s' directly at guest IP %s", vmName, guestIP)
+		log.Infof("Proxying request to VM '%s' via port forward %s", vmName, hostPort)
 	} else {
-		log.Infof("Proxying request to first available VM directly at guest IP %s", guestIP)
+		log.Infof("Proxying request to first available VM via port forward %s", hostPort)
 	}
 
 	// Handle WebSocket upgrade
@@ -271,69 +259,56 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Handle HTTP requests - Chrome is only listening on 127.0.0.1 inside guest
-	// We need to execute the request from within the guest VM using arrakis-client
-	targetVMName := vm.VMName
-	curlCommand := fmt.Sprintf("curl -s http://127.0.0.1:9223%s", r.URL.Path)
+	// Handle HTTP requests - Use port forward for consistent routing
+	// This replaces the arrakis-client approach with direct port forward usage
+	targetURL := fmt.Sprintf("http://127.0.0.1:%s%s", hostPort, r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
 		values := r.URL.Query()
 		values.Del("vm")
 		if len(values) > 0 {
-			curlCommand += "?" + values.Encode()
+			targetURL += "?" + values.Encode()
 		}
 	}
 	
-	// Execute curl inside the guest VM
-	log.Infof("Executing command in VM %s: %s", targetVMName, curlCommand)
-	cmd := exec.Command("./out/arrakis-client", "run", "-n", targetVMName, "-c", curlCommand)
-	output, err := cmd.Output()
+	log.Infof("Proxying HTTP request via port forward: %s (VM: %s)", targetURL, vm.VMName)
+	
+	// Create HTTP request to the port-forwarded Chrome instance
+	req, err := http.NewRequest(r.Method, targetURL, r.Body)
 	if err != nil {
-		log.Errorf("Failed to execute command in VM %s: %v", targetVMName, err)
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			log.Errorf("Command stderr: %s", string(exitErr.Stderr))
-		}
+		log.Errorf("Failed to create proxy request: %v", err)
 		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
-
-	log.Infof("Raw output from arrakis-client: %q", string(output))
-
-	// Parse the output to extract the JSON (skip the INFO line)
-	// The JSON starts after the INFO line and may span multiple lines
-	lines := strings.Split(string(output), "\n")
-	var jsonStart int = -1
 	
-	// Find the start of JSON (first line with [ or {)
-	for i, line := range lines {
-		line = strings.TrimSpace(line)
-		log.Debugf("Line %d: %q", i, line)
-		if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
-			jsonStart = i
-			break
+	// Copy headers (excluding Host)
+	for key, values := range r.Header {
+		if key != "Host" {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
 		}
 	}
-
-	if jsonStart == -1 {
-		log.Errorf("No JSON found in output: %q", string(output))
-		http.Error(w, "502 Bad Gateway - No JSON response", http.StatusBadGateway)
+	
+	// Execute the request
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Errorf("Failed to proxy request to VM %s: %v", vm.VMName, err)
+		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
-
-	// Extract all lines from JSON start to end and join them
-	jsonLines := lines[jsonStart:]
-	jsonOutput := strings.Join(jsonLines, "\n")
-	jsonOutput = strings.TrimSpace(jsonOutput)
-
-	log.Infof("Extracted JSON: %q", jsonOutput)
-
-	// Validate JSON before returning
-	var testJSON interface{}
-	if err := json.Unmarshal([]byte(jsonOutput), &testJSON); err != nil {
-		log.Errorf("Invalid JSON extracted: %v", err)
-		http.Error(w, "502 Bad Gateway - Invalid JSON", http.StatusBadGateway)
+	defer resp.Body.Close()
+	
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Errorf("Failed to read response body: %v", err)
+		http.Error(w, "502 Bad Gateway", http.StatusBadGateway)
 		return
 	}
+	
+	log.Infof("Received response from Chrome: %d bytes", len(body))
 
 	// Fix WebSocket URLs in the JSON to point to our CDP server for external access
 	// Replace Chrome's internal URLs with our proxy URLs
@@ -342,6 +317,9 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		// If no Host header, use localhost with our CDP server port
 		hostURL = fmt.Sprintf("localhost:%s", s.port)
 	}
+	
+	// Get the response as string and rewrite URLs
+	jsonOutput := string(body)
 	
 	// Replace Chrome's WebSocket URLs with our CDP server URLs
 	// Handle both /devtools/ and /devtools/browser/ patterns
@@ -354,9 +332,15 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	
 	log.Infof("Rewritten JSON for external access: %q", jsonOutput)
 
-	// Return the JSON response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	// Copy response headers
+	for key, values := range resp.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	
+	// Set status code and write response
+	w.WriteHeader(resp.StatusCode)
 	w.Write([]byte(jsonOutput))
 }
 
@@ -364,7 +348,7 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 func (s *cdpServer) versionHandler(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if host == "" {
-		host = "localhost:3007" // fallback
+		host = fmt.Sprintf("localhost:%s", s.port) // Use configured port
 	}
 	
 	response := map[string]interface{}{
@@ -383,7 +367,7 @@ func (s *cdpServer) versionHandler(w http.ResponseWriter, r *http.Request) {
 func (s *cdpServer) listHandler(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
 	if host == "" {
-		host = "localhost:3007" // fallback
+		host = fmt.Sprintf("localhost:%s", s.port) // Use configured port consistently
 	}
 	
 	response := []map[string]interface{}{
