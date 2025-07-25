@@ -252,10 +252,16 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse guest IP and remove CIDR notation if present
+	guestIP := vm.IP
+	if strings.Contains(guestIP, "/") {
+		guestIP = strings.Split(guestIP, "/")[0]
+	}
+
 	if vmName != "" {
-		log.Infof("Proxying request to VM '%s' directly at guest IP %s", vmName, vm.IP)
+		log.Infof("Proxying request to VM '%s' directly at guest IP %s", vmName, guestIP)
 	} else {
-		log.Infof("Proxying request to first available VM directly at guest IP %s", vm.IP)
+		log.Infof("Proxying request to first available VM directly at guest IP %s", guestIP)
 	}
 
 	// Handle WebSocket upgrade
@@ -265,11 +271,6 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle HTTP requests - connect directly to guest IP instead of host port
-	guestIP := vm.IP
-	// Remove CIDR notation if present (e.g., "10.20.1.2/24" -> "10.20.1.2")
-	if strings.Contains(guestIP, "/") {
-		guestIP = strings.Split(guestIP, "/")[0]
-	}
 	targetURL := fmt.Sprintf("http://%s:9223%s", guestIP, r.URL.Path)
 	if r.URL.RawQuery != "" {
 		// Remove vm parameter from forwarded query string
