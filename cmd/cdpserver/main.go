@@ -299,23 +299,31 @@ func (s *cdpServer) proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Infof("Raw output from arrakis-client: %q", string(output))
 
-	// Parse the output to extract just the JSON (skip the INFO line)
+	// Parse the output to extract the JSON (skip the INFO line)
+	// The JSON starts after the INFO line and may span multiple lines
 	lines := strings.Split(string(output), "\n")
-	var jsonOutput string
+	var jsonStart int = -1
+	
+	// Find the start of JSON (first line with [ or {)
 	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		log.Debugf("Line %d: %q", i, line)
 		if strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[") {
-			jsonOutput = line
+			jsonStart = i
 			break
 		}
 	}
 
-	if jsonOutput == "" {
+	if jsonStart == -1 {
 		log.Errorf("No JSON found in output: %q", string(output))
 		http.Error(w, "502 Bad Gateway - No JSON response", http.StatusBadGateway)
 		return
 	}
+
+	// Extract all lines from JSON start to end and join them
+	jsonLines := lines[jsonStart:]
+	jsonOutput := strings.Join(jsonLines, "\n")
+	jsonOutput = strings.TrimSpace(jsonOutput)
 
 	log.Infof("Extracted JSON: %q", jsonOutput)
 
